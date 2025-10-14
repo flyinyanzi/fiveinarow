@@ -1,0 +1,54 @@
+body {
+  font-family: sans-serif;
+  background-color: #f0f0f0;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+}
+
+.game-container {
+  max-width: 800px;
+  margin: auto;
+  padding: 20px;
+}
+
+.player-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dialog-box {
+  background: #fff7c4;
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #999;
+  min-height: 40px;
+}
+
+canvas {
+  border: 2px solid #000;
+  background-color: #fff;
+  margin-bottom: 15px;
+}
+
+.skills-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #eef;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+#skill-pool {
+  flex-grow: 1;
+  text-align: left;
+  padding-left: 10px;
+}
