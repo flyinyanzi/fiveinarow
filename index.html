@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>技能五子棋</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="game-container">
+
+    <!-- 玩家信息 -->
+    <div class="player-info">
+      <div class="player" id="player1">
+        <img src="https://via.placeholder.com/60" alt="玩家1头像">
+        <div class="player-name">玩家1</div>
+      </div>
+      <div class="player" id="player2">
+        <img src="https://via.placeholder.com/60" alt="玩家2头像">
+        <div class="player-name">玩家2</div>
+      </div>
+    </div>
+
+    <!-- 搞笑对白 -->
+    <div class="dialog-box" id="dialog-box">搞笑对白区域</div>
+
+    <!-- 棋盘 -->
+    <canvas id="board" width="600" height="600"></canvas>
+
+    <!-- 技能区 -->
+    <div class="skills-container">
+      <div id="skill-pool">技能池（抽取后显示）</div>
+      <button id="draw-skill">🎲 抽取技能</button>
+    </div>
+
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
