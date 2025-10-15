@@ -143,11 +143,18 @@ function renderSkillPool() {
     }
 
     btn.onclick = () => {
-      if (skill.usedBy.includes(currentPlayer)) return;
-      skill.effect(gameState);
-      skill.usedBy.push(currentPlayer);
-      renderSkillPool();
-    };
+    if (skill.usedBy.includes(currentPlayer)) return;
+    // ✅ 通用防护：对方还没下过棋，禁止发动技能
+    if (!gameState.opponentLastMove) {
+      gameState.showDialog("对方还没有落子，无计可施哦");
+      return;
+    }
+
+  skill.effect(gameState);
+  skill.usedBy.push(currentPlayer);
+  renderSkillPool();
+};
+
 
     area.appendChild(btn);
   });
