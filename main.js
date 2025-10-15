@@ -9,6 +9,7 @@ let gameOver = false;
 const gameState = {
   board: [],
   opponentLastMove: null,
+  skipNextTurn: false,
   showDialog,
   clearCell,
 };
@@ -22,6 +23,8 @@ function startGame() {
 
   board = Array.from({ length: 15 }, () => Array(15).fill(0));
   gameState.board = board;
+  gameState.opponentLastMove = null;
+  gameState.skipNextTurn = false;
 
   initBoard();
   renderSkillPool();
@@ -50,6 +53,14 @@ function initBoard() {
 
   canvas.onclick = function (e) {
     if (gameOver) return;
+
+    if (gameState.skipNextTurn) {
+      gameState.skipNextTurn = false;
+      showDialog(`玩家${currentPlayer}跳过回合！`);
+      currentPlayer = 3 - currentPlayer;
+      renderSkillPool();
+      return;
+    }
 
     const rect = canvas.getBoundingClientRect();
     const x = Math.floor((e.clientX - rect.left) / cell);
