@@ -94,7 +94,6 @@ function clearCell(x, y) {
   const cell = canvas.width / 15;
   ctx.clearRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
 
-  // 重新绘网格线交点
   ctx.beginPath();
   ctx.moveTo(x * cell + cell / 2, y * cell);
   ctx.lineTo(x * cell + cell / 2, y * cell + cell);
@@ -143,18 +142,17 @@ function renderSkillPool() {
     }
 
     btn.onclick = () => {
-    if (skill.usedBy.includes(currentPlayer)) return;
-    // ✅ 通用防护：对方还没下过棋，禁止发动技能
-    if (!gameState.opponentLastMove) {
-      gameState.showDialog("对方还没有落子，无计可施哦");
-      return;
-    }
+      if (skill.usedBy.includes(currentPlayer)) return;
 
-  skill.effect(gameState);
-  skill.usedBy.push(currentPlayer);
-  renderSkillPool();
-};
+      if (!gameState.opponentLastMove) {
+        gameState.showDialog("对方还没有落子，无计可施哦");
+        return;
+      }
 
+      skill.effect(gameState);
+      skill.usedBy.push(currentPlayer);
+      renderSkillPool();
+    };
 
     area.appendChild(btn);
   });
