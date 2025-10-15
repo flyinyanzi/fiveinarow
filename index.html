@@ -55,34 +55,7 @@
     <div id="skill-area"></div>
   </div>
 
-  <script>
-    let playMode = "pvp";
-    let skillMode = "free";
-
-    function startGame() {
-      playMode = document.querySelector('input[name="play-mode"]:checked').value;
-      skillMode = document.querySelector('input[name="skill-mode"]:checked').value;
-      document.getElementById('start-menu').style.display = 'none';
-      document.querySelector('.game-container').style.display = 'block';
-      initBoard();
-      initSkillUI();
-    }
-
-    // DEMO: 飞沙走石技能
-    function executeSkill_feishazoushi(opponentLastMove) {
-      if (!opponentLastMove) return;
-      const { x, y } = opponentLastMove;
-      const cellSize = 600 / 15;
-      const canvas = document.getElementById('board');
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(x * cellSize + 1, y * cellSize + 1, cellSize - 2, cellSize - 2);
-      board[y][x] = 0;
-      showDialog("飞沙走石！对方的棋子飞出去了！");
-    }
-
-    function showDialog(text) {
-      document.getElementById('dialog-box').innerText = text;
-    }
-  </script>
+  <script src="skills.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>
