@@ -1,82 +1,62 @@
-const canvas = document.getElementById('board');
-const ctx = canvas.getContext('2d');
-const size = 15; // 15x15
-const cellSize = canvas.width / size;
-const board = Array.from({ length: size }, () => Array(size).fill(0)); // 0: 空, 1: 黑, 2: 白
+// main.js
 
-let currentPlayer = 1; // 1黑先手，2白后手
-let gameOver = false;
+let playMode = "pvp";
+let skillMode = "free";
+let currentPlayer = 1;
+let board = Array.from({ length: 15 }, () => Array(15).fill(0));
 
-function drawBoard() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = '#000';
-  for (let i = 0; i < size; i++) {
-    ctx.beginPath();
-    ctx.moveTo(cellSize / 2, cellSize / 2 + i * cellSize);
-    ctx.lineTo(canvas.width - cellSize / 2, cellSize / 2 + i * cellSize);
-    ctx.stroke();
+function startGame() {
+  playMode = document.querySelector('input[name="play-mode"]:checked').value;
+  skillMode = document.querySelector('input[name="skill-mode"]:checked').value;
 
-    ctx.beginPath();
-    ctx.moveTo(cellSize / 2 + i * cellSize, cellSize / 2);
-    ctx.lineTo(cellSize / 2 + i * cellSize, canvas.height - cellSize / 2);
-    ctx.stroke();
-  }
+  document.getElementById('start-menu').style.display = 'none';
+  document.querySelector('.game-container').style.display = 'block';
+
+  initBoard();
+  initSkillUI();
+  showDialog(`玩家${currentPlayer}开始！`);
 }
 
-function drawPiece(x, y, player) {
-  const centerX = x * cellSize + cellSize / 2;
-  const centerY = y * cellSize + cellSize / 2;
-  const radius = cellSize / 2.5;
-
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-  ctx.fillStyle = player === 1 ? 'black' : 'white';
-  ctx.fill();
-  ctx.strokeStyle = 'black';
-  ctx.stroke();
+function initBoard() {
+  // 绘制棋盘（略）
 }
 
-function checkWin(x, y, player) {
-  const directions = [
-    [1, 0], [0, 1], [1, 1], [1, -1]
-  ];
-  for (let [dx, dy] of directions) {
-    let count = 1;
-    for (let d = 1; d < 5; d++) {
-      const nx = x + dx * d;
-      const ny = y + dy * d;
-      if (board[ny]?.[nx] === player) count++;
-      else break;
-    }
-    for (let d = 1; d < 5; d++) {
-      const nx = x - dx * d;
-      const ny = y - dy * d;
-      if (board[ny]?.[nx] === player) count++;
-      else break;
-    }
-    if (count >= 5) return true;
-  }
-  return false;
-}
-
-canvas.addEventListener('click', (e) => {
-  if (gameOver) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.floor((e.clientX - rect.left) / cellSize);
-  const y = Math.floor((e.clientY - rect.top) / cellSize);
+function placePiece(x, y) {
   if (board[y][x] !== 0) return;
-
   board[y][x] = currentPlayer;
-  drawPiece(x, y, currentPlayer);
+  // drawPiece(x, y, currentPlayer);
 
-  if (checkWin(x, y, currentPlayer)) {
-    document.getElementById('dialog-box').innerText = `🎉 玩家${currentPlayer} 获胜！`;
-    gameOver = true;
-    return;
-  }
-
+  // 记录落子（供技能调用）
+  gameState.opponentLastMove = { x, y };
   currentPlayer = 3 - currentPlayer;
-  document.getElementById('dialog-box').innerText = `轮到 玩家${currentPlayer}`;
-});
 
-drawBoard();
+  onTurnStart(); // 进入下一回合
+}
+
+function onTurnStart() {
+  if (playMode === "pve" && currentPlayer === 2) {
+    aiTurn();
+  } else {
+    if (skillMode === "free") {
+      renderSkillPool();
+    } else if (skillMode === "random") {
+      renderDrawButton();
+    }
+  }
+}
+
+function showDialog(text) {
+  document.getElementById('dialog-box').innerText = text;
+}
+
+function clearCellOnCanvas(x, y) {
+  const cellSize = 600 / 15;
+  const ctx = document.getElementById('board').getContext('2d');
+  ctx.clearRect(x * cellSize + 1, y * cellSize + 1, cellSize - 2, cellSize - 2);
+}
+
+// 游戏状态管理对象
+const gameState = {
+  board,
+  opponentLastMove: null
+};
