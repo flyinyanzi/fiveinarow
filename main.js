@@ -10,7 +10,9 @@ const gameState = {
   board: [],
   opponentLastMove: null,
   skipNextTurn: false,
-  showDialog,
+  cancelOpponentSkill: false,
+  currentPlayer: 1,
+  showDialogForPlayer,
   clearCell,
 };
 
@@ -25,10 +27,13 @@ function startGame() {
   gameState.board = board;
   gameState.opponentLastMove = null;
   gameState.skipNextTurn = false;
+  gameState.cancelOpponentSkill = false;
 
   initBoard();
-  renderSkillPool();
-  showDialog(`玩家${currentPlayer}先手`);
+  renderSkillPool(1);
+  renderSkillPool(2);
+  showDialogForPlayer(1, "玩家1先手");
+  showDialogForPlayer(2, "");
 }
 
 function initBoard() {
@@ -56,9 +61,11 @@ function initBoard() {
 
     if (gameState.skipNextTurn) {
       gameState.skipNextTurn = false;
-      showDialog(`玩家${currentPlayer}跳过回合！`);
+      showDialogForPlayer(currentPlayer, "玩家" + currentPlayer + "跳过回合！");
       currentPlayer = 3 - currentPlayer;
-      renderSkillPool();
+      gameState.currentPlayer = currentPlayer;
+      renderSkillPool(1);
+      renderSkillPool(2);
       return;
     }
 
@@ -73,14 +80,16 @@ function initBoard() {
     gameState.opponentLastMove = { x, y };
 
     if (checkWin(x, y, currentPlayer)) {
-      showDialog(`🎉 玩家${currentPlayer}获胜！`);
+      showDialogForPlayer(currentPlayer, `🎉 玩家${currentPlayer}获胜！`);
       gameOver = true;
       return;
     }
 
     currentPlayer = 3 - currentPlayer;
-    renderSkillPool();
-    showDialog(`轮到玩家${currentPlayer}`);
+    gameState.currentPlayer = currentPlayer;
+    renderSkillPool(1);
+    renderSkillPool(2);
+    showDialogForPlayer(currentPlayer, `轮到玩家${currentPlayer}`);
   };
 }
 
@@ -136,39 +145,70 @@ function checkWin(x, y, player) {
   return false;
 }
 
-function renderSkillPool() {
-  const area = document.getElementById('skill-area');
+function renderSkillPool(playerId) {
+  const area = document.getElementById(`player${playerId}-skill-area`);
   area.innerHTML = '';
+
   if (skillMode !== 'free') return;
 
   skills.forEach(skill => {
+    const used = skill.usedBy.includes(playerId);
+    const isVisible = skill.visible !== false || playerId === 1 || playerId === 2;
+
+    // 梅开二度：飞沙走石使用后再显示
+    if (skill.dependsOn) {
+      const depSkill = skills.find(s => s.id === skill.dependsOn);
+      if (!depSkill || !depSkill.usedBy.includes(playerId)) return;
+    }
+
+    if (!isVisible) return;
+
     const btn = document.createElement('button');
     btn.className = 'skill-button';
-    btn.innerText = `${skill.name}`;
+    btn.innerText = skill.name;
     btn.title = skill.description;
 
-    if (skill.usedBy.includes(currentPlayer)) {
+    if (used) {
       btn.disabled = true;
       btn.innerText += ' ✅';
     }
 
     btn.onclick = () => {
-      if (skill.usedBy.includes(currentPlayer)) return;
+      if (used) return;
 
       if (!gameState.opponentLastMove) {
-        gameState.showDialog("对方还没有落子，无计可施哦");
+        showDialogForPlayer(playerId, "对方还没有落子，无计可施哦");
+        return;
+      }
+
+      if (gameState.cancelOpponentSkill) {
+        showDialogForPlayer(playerId, "技能被取消，无法发动！");
         return;
       }
 
       skill.effect(gameState);
-      skill.usedBy.push(currentPlayer);
-      renderSkillPool();
+      skill.usedBy.push(playerId);
+      renderSkillPool(1);
+      renderSkillPool(2);
+
+      // 如果技能触发了其他技能的显现（如擒拿）
+      skills.forEach(hiddenSkill => {
+        if (hiddenSkill.triggeredBy === skill.id) {
+          hiddenSkill.visible = true;
+          setTimeout(() => {
+            hiddenSkill.visible = false;
+            renderSkillPool(1);
+            renderSkillPool(2);
+          }, hiddenSkill.timeout || 3000);
+        }
+      });
     };
 
     area.appendChild(btn);
   });
 }
 
-function showDialog(text) {
-  document.getElementById('dialog-box').innerText = text;
+function showDialogForPlayer(playerId, text) {
+  const box = document.getElementById(`dialog-player${playerId}`);
+  if (box) box.innerText = text;
 }
