@@ -9,9 +9,14 @@ let gameOver = false;
 const gameState = {
   board: [],
   opponentLastMove: null,
-  skipNextTurn: false,
+  skipNextTurn: false,  // ← 可保留，但下面主要用 skipNextTurnFor
   cancelOpponentSkill: false,
   currentPlayer: 1,
+  // 新增：精确指定要被跳过下一回合的玩家
+  skipNextTurnFor: null,          // 1 或 2 或 null
+  // 新增：某玩家在“因静如止水得到的额外回合”里禁止用技能
+  bonusTurnNoSkillFor: null,      // 1 或 2 或 null
+
   showDialogForPlayer,
   clearCell,
 };
@@ -30,6 +35,8 @@ function startGame() {
 
   board = Array.from({ length: 15 }, () => Array(15).fill(0));
   gameState.board = board;
+  gameState.skipNextTurnFor = null;
+  gameState.bonusTurnNoSkillFor = null;
   gameState.opponentLastMove = null;
   gameState.skipNextTurn = false;
   gameState.cancelOpponentSkill = false;
@@ -65,16 +72,24 @@ function initBoard() {
   canvas.onclick = function (e) {
     if (gameOver) return;
 
-    if (gameState.skipNextTurn) {
-      gameState.skipNextTurn = false;
-      showDialogForPlayer(currentPlayer, "玩家" + currentPlayer + "跳过回合！");
+    // ★ 如果“当前玩家”正是要被跳过的人 → 直接跳过，无任何落子/技能
+    if (gameState.skipNextTurnFor === currentPlayer) {
+      // 清除跳过标记
+      gameState.skipNextTurnFor = null;
+
+      showDialogForPlayer(currentPlayer, "……啊？我被定住了（本轮被跳过）");
+      // 直接把回合切给对手
       currentPlayer = 3 - currentPlayer;
       gameState.currentPlayer = currentPlayer;
+
+      // 更新UI
       renderSkillPool(1);
       renderSkillPool(2);
+      updateTurnIndicator();
       return;
     }
 
+    // ↓↓↓ 下面是你原来的点击落子逻辑 ↓↓↓
     const rect = canvas.getBoundingClientRect();
     const x = Math.floor((e.clientX - rect.left) / cell);
     const y = Math.floor((e.clientY - rect.top) / cell);
@@ -93,6 +108,13 @@ function initBoard() {
 
     currentPlayer = 3 - currentPlayer;
     gameState.currentPlayer = currentPlayer;
+
+    // 如果换手后，不再是“获益者的额外回合”，就清理禁用
+    if (gameState.bonusTurnNoSkillFor && gameState.bonusTurnNoSkillFor !== currentPlayer) {
+      // 说明刚刚那位的“额外回合”已经结束，解除限制
+      gameState.bonusTurnNoSkillFor = null;
+    }
+
     renderSkillPool(1);
     renderSkillPool(2);
     updateTurnIndicator();
@@ -185,6 +207,14 @@ function renderSkillPool(playerId) {
     if (used) {
       btn.disabled = true;
       btn.innerText += ' ✅';
+    }
+
+    // 如果这是因【静如止水】获得的额外回合，则禁止该玩家使用技能（只许落子）
+    const isBonusNoSkill = (playerId === currentPlayer) && (gameState.bonusTurnNoSkillFor === currentPlayer);
+    if (isBonusNoSkill) {
+      btn.disabled = true;
+      btn.title = "本回合因静如止水效果，不能使用技能";
+      btn.style.opacity = 0.6;
     }
 
     btn.onclick = () => {
