@@ -16,11 +16,25 @@ const skills = [
   {
     id: "jingruzhishui",
     name: "静如止水",
-    description: "使对方这轮无法下棋",
+    description: "使对方这轮无法下棋（本次让你获得一次连续出手，但紧接着的那次额外回合不能再次用技能）",
     usedBy: [],
     effect: function (gameState) {
-      gameState.skipNextTurn = true;
-      gameState.showDialogForPlayer(gameState.currentPlayer, "静如止水发动！对方顿时凝固在原地！");
+      const caster = gameState.currentPlayer;
+      const target = 3 - caster;
+
+      // 标记跳过目标玩家的下一回合
+      gameState.skipNextTurnFor = target;
+
+      // 施放者在“跳过对手这一轮”后获得一次额外回合，
+      // 为避免连续控场，限定这次额外回合【不能使用技能】
+      gameState.bonusTurnNoSkillFor = caster;
+
+      // 对白：施放者 -> 目标方 的反应
+      gameState.showDialogForPlayer(caster, "静如止水发动！对方顿时凝固在原地！");
+      // 稍后给被定住一方的反应对白
+      setTimeout(() => {
+        gameState.showDialogForPlayer(target, "什么！我被定住了！");
+      }, 700);
     }
   },
   {
