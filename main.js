@@ -16,6 +16,11 @@ const gameState = {
   clearCell,
 };
 
+function updateTurnIndicator() {
+  const el = document.getElementById('turn-indicator');
+  if (el) el.innerText = `轮到玩家 ${currentPlayer}`;
+}
+
 function startGame() {
   playMode = document.querySelector('input[name="play-mode"]:checked').value;
   skillMode = document.querySelector('input[name="skill-mode"]:checked').value;
@@ -32,7 +37,8 @@ function startGame() {
   initBoard();
   renderSkillPool(1);
   renderSkillPool(2);
-  showDialogForPlayer(1, "玩家1先手");
+  updateTurnIndicator();
+  showDialogForPlayer(1, "");
   showDialogForPlayer(2, "");
 }
 
@@ -89,7 +95,7 @@ function initBoard() {
     gameState.currentPlayer = currentPlayer;
     renderSkillPool(1);
     renderSkillPool(2);
-    showDialogForPlayer(currentPlayer, `轮到玩家${currentPlayer}`);
+    updateTurnIndicator();
   };
 }
 
@@ -153,14 +159,15 @@ function renderSkillPool(playerId) {
 
   skills.forEach(skill => {
     const used = skill.usedBy.includes(playerId);
-    const isVisible = skill.visible !== false || playerId === 1 || playerId === 2;
 
-    // 梅开二度：飞沙走石使用后再显示
+    // 梅开二度依赖关系（维持原逻辑）
     if (skill.dependsOn) {
       const depSkill = skills.find(s => s.id === skill.dependsOn);
       if (!depSkill || !depSkill.usedBy.includes(playerId)) return;
     }
 
+    // 可见性（维持原逻辑）
+    const isVisible = skill.visible !== false;
     if (!isVisible) return;
 
     const btn = document.createElement('button');
@@ -168,30 +175,46 @@ function renderSkillPool(playerId) {
     btn.innerText = skill.name;
     btn.title = skill.description;
 
+    // ① 非当前玩家 → 置灰禁用
+    if (playerId !== currentPlayer) {
+      btn.disabled = true;
+      btn.style.opacity = 0.5;
+    }
+
+    // ② 当前玩家但已用过 → 置灰禁用
     if (used) {
       btn.disabled = true;
       btn.innerText += ' ✅';
     }
 
     btn.onclick = () => {
+      if (playerId !== currentPlayer) return;
       if (used) return;
 
+      // A) 对方还没落过子（你之前有的通用规则——保留）
       if (!gameState.opponentLastMove) {
         showDialogForPlayer(playerId, "对方还没有落子，无计可施哦");
         return;
       }
 
-      if (gameState.cancelOpponentSkill) {
-        showDialogForPlayer(playerId, "技能被取消，无法发动！");
+      // B) 对方棋盘上一个子都没有 → 不允许使用需要目标的技能
+      //    （如果以后某些技能不需要目标，给它加 skill.ignoreTargetCheck = true 即可跳过）
+      if (!skill.ignoreTargetCheck && !hasEnemyPieceFor(playerId)) {
+        showDialogForPlayer(playerId, "现在对方一子未下，技能无从施展！");
         return;
       }
 
+      // （可选：这里也可以校验“当前回合是否已经进行过落子/技能”，但这是问题6，暂不改）
+
+      // 真正执行技能
       skill.effect(gameState);
       skill.usedBy.push(playerId);
+
+      // 刷新两个面板
       renderSkillPool(1);
       renderSkillPool(2);
 
-      // 如果技能触发了其他技能的显现（如擒拿）
+      // 触发型技能显隐（保持原逻辑）
       skills.forEach(hiddenSkill => {
         if (hiddenSkill.triggeredBy === skill.id) {
           hiddenSkill.visible = true;
@@ -206,6 +229,20 @@ function renderSkillPool(playerId) {
 
     area.appendChild(btn);
   });
+}
+
+function countPiecesOf(playerId) {
+  let cnt = 0;
+  for (let y = 0; y < board.length; y++) {
+    for (let x = 0; x < board[y].length; x++) {
+      if (board[y][x] === playerId) cnt++;
+    }
+  }
+  return cnt;
+}
+
+function hasEnemyPieceFor(playerId) {
+  return countPiecesOf(3 - playerId) > 0;
 }
 
 function showDialogForPlayer(playerId, text) {
