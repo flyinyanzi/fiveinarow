@@ -23,6 +23,7 @@ function clearDialogs() {
 // ———— 游戏状态对象（集中放置） ————
 const gameState = {
   board: [],
+  moveHistory: [], // 落子历史
   opponentLastMove: null, // 兼容旧逻辑
 
   skipNextTurn: false,          // 兼容字段
@@ -48,6 +49,8 @@ const gameState = {
 
 // ———— 启动入口 ————
 function startGame() {
+  gameState.moveHistory = []; // 落子历史
+  
   playMode  = document.querySelector('input[name="play-mode"]:checked').value;
   skillMode = document.querySelector('input[name="skill-mode"]:checked').value;
 
@@ -150,6 +153,9 @@ function initBoard() {
     // 正式落子
     board[y][x] = currentPlayer;
     drawPiece(x, y, currentPlayer);
+
+    // 记录落子历史
+    gameState.moveHistory.push({ player: currentPlayer, x, y });
 
     // 回合内标记：已落子
     gameState.moveMadeThisTurn = true;
@@ -371,6 +377,10 @@ function openTiaoHuWindow(attacker) {
   // 3秒后自动消失
   const timeoutId = setTimeout(() => {
     markSkillVisibleFor('tiaohulishan', attacker, false);
+    // 清理窗口状态，否则棋盘会以为还在结算中
+    if (gameState.reactionWindow?.timeoutId) clearTimeout(gameState.reactionWindow.timeoutId);
+    gameState.reactionWindow = null;
+
     renderSkillPool(1);
     renderSkillPool(2);
   }, 3000);
@@ -421,6 +431,35 @@ function renderSkillPool(playerId) {
       return; // ★ 本技能已渲染，直接结束此 skill 的处理
     }
     // ---------- 擒拿特殊处理结束 ----------
+
+    // ---------- 先处理「调虎离山」的特殊渲染：在反应窗口内绕开所有通用禁用 ----------
+    if (skill.id === 'tiaohulishan') {
+      const canCounter =
+        react &&
+        react.defenderId === playerId &&           // 这里 defenderId 其实是“可发动者”
+        react.forSkillId === 'tiaohulishan';
+
+      if (!canCounter) return;
+
+      const btn = document.createElement('button');
+      btn.className = 'skill-button';
+      btn.innerText = skill.name;
+      btn.title = '擒拿之后3秒内可发动调虎离山！';
+
+      // ★ 强制可点，绕开通用禁用
+      btn.disabled = false;
+      btn.style.opacity = 1;
+
+      btn.onclick = () => {
+        // 同样绕开 guard，直接执行技能
+        gameState.currentPlayer = playerId; // 确保effect拿到施放者
+        skill.effect(gameState);
+      };
+
+      area.appendChild(btn);
+      return;
+    }
+    // ---------- 调虎离山特殊处理结束 ----------
 
     // 依赖关系：如“梅开二度”依赖“飞沙走石”被该玩家使用
     if (skill.dependsOn) {
