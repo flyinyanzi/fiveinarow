@@ -338,14 +338,20 @@ function cancelPreparedSkill(byPlayerId) {
 
   // 取消准备中的梅开二度（不计入对方的一回合一次技能）
   showDialogForPlayer(defender, "擒拿擒拿，擒擒又拿拿！");
-  showDialogForPlayer(attacker, "我的梅开二度被擒住了？！");
+  showDialogForPlayer(attacker, "我的梅开二度被擒住了？！本回合只能落子……");
 
+  // 清理窗口与准备态 + 停止超时结算
   if (gameState.reactionWindow?.timeoutId) clearTimeout(gameState.reactionWindow.timeoutId);
   gameState.reactionWindow = null;
   gameState.preparedSkill = null;
 
   // 立即隐藏擒拿按钮
   markSkillVisibleFor('qin_na', defender, false);
+
+  // ★ 关键：被取消的一方（当前回合的进攻方）本回合不再允许使用任何技能，避免循环
+  if (currentPlayer === attacker) {
+    gameState.skillUsedThisTurn = true; // 锁定本回合技能
+  }
 
   renderSkillPool(1);
   renderSkillPool(2);
@@ -437,70 +443,39 @@ function renderSkillPool(playerId) {
     btn.onclick = () => {
       if (btn.disabled) return;
 
-      // ★★★ 1) 先处理【擒拿】特例：允许非当前玩家在反应窗口点击 ★★★
-      if (skill.id === 'qin_na') {
-        const rw = gameState.reactionWindow;
-        if (rw && rw.defenderId === playerId && rw.forSkillId === 'meikaierdhu') {
-          // 在3秒反应窗口内 → 可以取消对方“梅开二度”
-          cancelPreparedSkill(playerId);
-          return;
-        }
-        // 不在窗口内：无效点击（直接忽略）
-        return;
-      }
-
-      // ★★★ 2) 其他技能再走通用拦截 ★★★
+      // 双保险：一切不允许的情况
       if (playerId !== currentPlayer) return;
       if (used) return;
+      if (gameState.skipNextTurnFor === playerId) { showDialogForPlayer(playerId, '我被定住了，本轮不能行动！'); return; }
+      if (gameState.bonusTurnNoSkillFor === playerId) { showDialogForPlayer(playerId, '本回合因静如止水效果，不能使用技能！'); return; }
+      if (gameState.skillUsedThisTurn) { showDialogForPlayer(playerId, '本回合已使用过技能，请先落子'); return; }
+      if (gameState.moveMadeThisTurn) { showDialogForPlayer(playerId, '本回合已落子，不能再用技能'); return; }
 
-      if (gameState.preparedSkill || gameState.reactionWindow) {
-        // 梅开二度准备/反应期间禁止其它操作（双保险）
-        showDialogForPlayer(playerId, '技能结算中，请稍候…');
-        return;
-      }
-
-      if (gameState.skipNextTurnFor === playerId) {
-        showDialogForPlayer(playerId, '我被定住了，本轮不能行动！');
-        return;
-      }
-      if (gameState.bonusTurnNoSkillFor === playerId) {
-        showDialogForPlayer(playerId, '本回合因静如止水效果，不能使用技能！');
-        return;
-      }
-      if (gameState.skillUsedThisTurn) {
-        showDialogForPlayer(playerId, '本回合已使用过技能，请先落子');
-        return;
-      }
-      if (gameState.moveMadeThisTurn) {
-        showDialogForPlayer(playerId, '本回合已落子，不能再用技能');
-        return;
-      }
-
-      // ★★★ 3) 梅开二度：进入“准备阶段”（不立刻计次） ★★★
+      // 特例：梅开二度进入准备阶段（不立刻计次）
       if (skill.id === 'meikaierdhu') {
-        // 守门：需要对手上一手 & 对手有棋
-        if (skill.needsOpponentLastMove && !gameState.lastMoveBy[3 - playerId]) {
-          showDialogForPlayer(playerId, '对方还没有落子，无计可施哦');
-          return;
-        }
-        if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) {
-          showDialogForPlayer(playerId, '现在对方一子未下，技能无从施展！');
-          return;
-        }
+        // 守门：需要对手上一手 & 对手棋子
+        if (skill.needsOpponentLastMove && !gameState.lastMoveBy[3 - playerId]) { showDialogForPlayer(playerId, '对方还没有落子，无计可施哦'); return; }
+        if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) { showDialogForPlayer(playerId, '现在对方一子未下，技能无从施展！'); return; }
         startPreparedSkill(playerId, 'meikaierdhu');
         return;
       }
 
-      // ★★★ 4) 其他普通技能（飞沙走石 / 静如止水）——通用守门 + 执行 ★★★
-      if (skill.needsOpponentLastMove) {
-        if (!gameState.lastMoveBy[3 - playerId]) {
-          showDialogForPlayer(playerId, '对方还没有落子，无计可施哦');
-          return;
+      // 特例：擒拿 → 只能在反应窗口中由防守方使用，用于取消
+      if (skill.id === 'qin_na') {
+        if (!(gameState.reactionWindow && gameState.reactionWindow.defenderId === playerId && gameState.reactionWindow.forSkillId === 'meikaierdhu')) {
+          return; // 非反应窗口，直接无效
         }
+        cancelPreparedSkill(playerId);
+        // 擒拿本身计次：作为反应技能，这里可选择是否计入；第一步我们不计次（只取消对方）
+        return;
+      }
+
+      // 其他普通技能（本步只剩飞沙走石、静如止水）——通用守门
+      if (skill.needsOpponentLastMove) {
+        if (!gameState.lastMoveBy[3 - playerId]) { showDialogForPlayer(playerId, '对方还没有落子，无计可施哦'); return; }
       }
       if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) {
-        showDialogForPlayer(playerId, '现在对方一子未下，技能无从施展！');
-        return;
+        showDialogForPlayer(playerId, '现在对方一子未下，技能无从施展！'); return;
       }
 
       // 触发技能（普通型）
@@ -514,11 +489,9 @@ function renderSkillPool(playerId) {
       // 一回合仅一次技能
       gameState.skillUsedThisTurn = true;
 
-      // 刷新两个面板
       renderSkillPool(1);
       renderSkillPool(2);
     };
-
 
     area.appendChild(btn);
   });
