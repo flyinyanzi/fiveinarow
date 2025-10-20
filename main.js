@@ -28,6 +28,7 @@ const gameState = {
 
   skipNextTurn: false,          // 保留（兼容老代码），当前未使用
   skipNextTurnFor: null,        // ★ 被“静如止水”定住、下回合被跳过的玩家 id（1/2/null）
+  bonusTurnPendingFor: null,    // ★ 谁将获得额外回合（尚未开始）
   bonusTurnNoSkillFor: null,    // ★ 施放静如止水后得到“额外回合”的玩家 id（该回合禁用技能）
   cancelOpponentSkill: false,   // 预留（以后擒拿用）当前版本未使用
   currentPlayer: 1,
@@ -57,6 +58,7 @@ function startGame() {
   gameState.opponentLastMove = null;
   gameState.lastMoveBy = {1: null, 2: null};
   gameState.skipNextTurnFor = null;
+  gameState.bonusTurnPendingFor = null;
   gameState.bonusTurnNoSkillFor = null;
   gameOver = false;
 
@@ -81,6 +83,10 @@ function handleStartOfTurn() {
     // 给玩家一点时间看到提示，再清空并刷新
     setTimeout(() => {
       clearDialogs();
+      // 跳过完成后，若此时轮到的人就是“待生效的额外回合的人”，现在才设禁技
+      if (gameState.bonusTurnPendingFor === currentPlayer) {
+        gameState.bonusTurnNoSkillFor = currentPlayer; // 额外回合开始：禁技生效
+      }
       renderSkillPool(1);
       renderSkillPool(2);
       updateTurnIndicator();
@@ -89,6 +95,10 @@ function handleStartOfTurn() {
   }
 
   // 3) 正常开始：渲染技能、刷新指示
+  // （如果这个人正好是“待生效的额外回合的人”，现在设禁技）
+  if (gameState.bonusTurnPendingFor === currentPlayer) {
+    gameState.bonusTurnNoSkillFor = currentPlayer;
+  }
   renderSkillPool(1);
   renderSkillPool(2);
   updateTurnIndicator();
@@ -147,12 +157,14 @@ function initBoard() {
     }
 
     // 切给对手
+    const justPlayed = currentPlayer; // 记录刚刚走子的人
     currentPlayer = 3 - currentPlayer;
     gameState.currentPlayer = currentPlayer;
 
-    // 如果“额外回合禁技能”的人已不是当前回合的人，说明那次额外回合结束，解除禁用
-    if (gameState.bonusTurnNoSkillFor && gameState.bonusTurnNoSkillFor !== currentPlayer) {
+    // 如果刚刚走子的人是“额外回合禁技的人”，说明额外回合已结束 → 清空两个标记
+    if (gameState.bonusTurnNoSkillFor === justPlayed) {
       gameState.bonusTurnNoSkillFor = null;
+      gameState.bonusTurnPendingFor = null; // 这一轮额外回合周期结束
     }
 
     // 进入下一回合的统一处理
