@@ -355,6 +355,29 @@ function cancelPreparedSkill(byPlayerId) {
 
   renderSkillPool(1);
   renderSkillPool(2);
+
+  // 擒拿结束后，为被擒方开启调虎离山窗口
+  openTiaoHuWindow(attacker);
+}
+
+// 调虎离山触发窗口
+function openTiaoHuWindow(attacker) {
+  const defender = 3 - attacker;
+
+  // 仅对被擒的一方显示3秒可用
+  markSkillVisibleFor('tiaohulishan', attacker, true);
+  gameState.showDialogForPlayer(attacker, "（调虎离山可发动！）");
+
+  // 3秒后自动消失
+  const timeoutId = setTimeout(() => {
+    markSkillVisibleFor('tiaohulishan', attacker, false);
+    renderSkillPool(1);
+    renderSkillPool(2);
+  }, 3000);
+
+  gameState.reactionWindow = { defenderId: attacker, forSkillId: 'tiaohulishan', timeoutId };
+  renderSkillPool(1);
+  renderSkillPool(2);
 }
 
 // ———— 技能 UI 渲染（左右各自卡池） ————
