@@ -96,11 +96,43 @@ const skills = [
   {
     id: "tiaohulishan",
     name: "调虎离山",
-    description: "被擒拿后短暂出现的反制卡（第二步再启用）",
+    description: "在被擒拿后3秒内可使用，反制对方并令其丢掉最近的两颗棋子",
     usedBy: [],
     hidden: true,
     visibleFor: {1: false, 2: false},
-    enabled: false,
-    effect: function (gameState) {}
+    enabled: true,
+    effect: function (gameState) {
+      const caster = gameState.currentPlayer;
+      const target = 3 - caster;
+
+      // 找到目标最近两颗棋子（如果不足两颗则全清）
+      const targetMoves = gameState.moveHistory.filter(m => m.player === target);
+      const lastTwo = targetMoves.slice(-2);
+      lastTwo.forEach(m => {
+        gameState.board[m.y][m.x] = 0;
+        gameState.clearCell(m.x, m.y);
+      });
+
+      gameState.showDialogForPlayer(caster, "调虎离山发动！拿走你的棋子和尊严！");
+      setTimeout(() => {
+        gameState.showDialogForPlayer(target, "啊？！我的棋子呢？！？");
+      }, 700);
+
+      // 清空所有技能状态
+      if (gameState.reactionWindow?.timeoutId) clearTimeout(gameState.reactionWindow.timeoutId);
+      gameState.reactionWindow = null;
+      gameState.preparedSkill = null;
+
+      // 技能使用标记
+      gameState.skillUsedThisTurn = true;
+
+      // 隐藏调虎离山
+      markSkillVisibleFor('tiaohulishan', caster, false);
+
+      // 重新渲染按钮状态
+      renderSkillPool(1);
+      renderSkillPool(2);
+    }
   }
+
 ];
