@@ -362,6 +362,13 @@ function cancelPreparedSkill(byPlayerId) {
   renderSkillPool(1);
   renderSkillPool(2);
 
+  // 记录：擒拿（qin_na）本局被防守方用过（每人限用一次）
+  const qinna = skills.find(s => s.id === 'qin_na');
+  if (qinna) {
+    qinna.usedBy = qinna.usedBy || [];
+    if (!qinna.usedBy.includes(defender)) qinna.usedBy.push(defender);
+  }
+
   // 擒拿结束后，为被擒方开启调虎离山窗口
   openTiaoHuWindow(attacker);
 }
