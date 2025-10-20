@@ -23,28 +23,28 @@ function clearDialogs() {
 // ———— 游戏状态对象（集中放置） ————
 const gameState = {
   board: [],
-  // 为兼容旧逻辑保留，但我们下面用更准确的 lastMoveBy 来判断“对手上一手”
-  opponentLastMove: null,
+  opponentLastMove: null, // 兼容旧逻辑
 
-  skipNextTurn: false,          // 保留（兼容老代码），当前未使用
-  skipNextTurnFor: null,        // ★ 被“静如止水”定住、下回合被跳过的玩家 id（1/2/null）
-  bonusTurnPendingFor: null,    // ★ 谁将获得额外回合（尚未开始）
-  bonusTurnNoSkillFor: null,    // ★ 施放静如止水后得到“额外回合”的玩家 id（该回合禁用技能）
-  cancelOpponentSkill: false,   // 预留（以后擒拿用）当前版本未使用
+  skipNextTurn: false,          // 兼容字段
+  skipNextTurnFor: null,        // 被“静如止水”定住、下回合被跳过的玩家 id（1/2/null）
+  bonusTurnPendingFor: null,    // 谁将获得额外回合（尚未开始）
+  bonusTurnNoSkillFor: null,    // 额外回合禁用技能的玩家 id（额外回合开始时才设）
+  cancelOpponentSkill: false,   // 预留
   currentPlayer: 1,
 
-  // ★ 分别记录玩家1、2自己的上一手（{x,y}或null）
-  lastMoveBy: { 1: null, 2: null },
+  lastMoveBy: { 1: null, 2: null }, // 分别记录玩家1/2自己的上一手
 
-  // 供技能里用到的 UI/辅助函数
+  // ★ 新增：本回合是否已使用过技能（每回合最多一次技能）
+  skillUsedThisTurn: false,
+
   showDialogForPlayer,
   clearCell,
 };
 
 // ———— 启动入口 ————
 function startGame() {
-  playMode    = document.querySelector('input[name="play-mode"]:checked').value;
-  skillMode   = document.querySelector('input[name="skill-mode"]:checked').value;
+  playMode  = document.querySelector('input[name="play-mode"]:checked').value;
+  skillMode = document.querySelector('input[name="skill-mode"]:checked').value;
 
   document.getElementById('start-menu').style.display = 'none';
   document.querySelector('.game-container').style.display = 'block';
@@ -52,7 +52,6 @@ function startGame() {
   board = Array.from({ length: 15 }, () => Array(15).fill(0));
   gameState.board = board;
 
-  // 初始化回合相关状态
   currentPlayer = 1;
   gameState.currentPlayer = 1;
   gameState.opponentLastMove = null;
@@ -60,30 +59,30 @@ function startGame() {
   gameState.skipNextTurnFor = null;
   gameState.bonusTurnPendingFor = null;
   gameState.bonusTurnNoSkillFor = null;
+  gameState.skillUsedThisTurn = false;
   gameOver = false;
 
   initBoard();
-  handleStartOfTurn(); // 统一的“回合开始”处理：清对白、处理跳过、刷新UI
+  handleStartOfTurn();
 }
 
-// ———— 回合开始统一处理：清对白→若该玩家被跳过则直接切人→刷新UI ————
+// ———— 回合开始统一处理：清对白→若该玩家被跳过则直接切人→生效额外回合禁技→刷新UI ————
 function handleStartOfTurn() {
-  // 1) 新回合开始，先清空对白，避免上轮台词残留
+  // 1) 新回合开始，先清空对白 + 重置“本回合已用技能”标记
   clearDialogs();
+  gameState.skillUsedThisTurn = false; // ★ 每回合开头清零
 
   // 2) 如果当前玩家本轮应该被跳过（静如止水效果）
   if (gameState.skipNextTurnFor === currentPlayer) {
     gameState.skipNextTurnFor = null;
     showDialogForPlayer(currentPlayer, "……啊？我被定住了（本轮被跳过）");
 
-    // 直接把回合切给对手
     currentPlayer = 3 - currentPlayer;
     gameState.currentPlayer = currentPlayer;
 
-    // 给玩家一点时间看到提示，再清空并刷新
     setTimeout(() => {
       clearDialogs();
-      // 跳过完成后，若此时轮到的人就是“待生效的额外回合的人”，现在才设禁技
+      // 跳过完成后，若此时轮到的人是待生效额外回合的人 → 现在才设禁技
       if (gameState.bonusTurnPendingFor === currentPlayer) {
         gameState.bonusTurnNoSkillFor = currentPlayer; // 额外回合开始：禁技生效
       }
@@ -94,11 +93,11 @@ function handleStartOfTurn() {
     return;
   }
 
-  // 3) 正常开始：渲染技能、刷新指示
-  // （如果这个人正好是“待生效的额外回合的人”，现在设禁技）
+  // 3) 正常开始：如果这个人正好是“待生效的额外回合的人”，现在设禁技
   if (gameState.bonusTurnPendingFor === currentPlayer) {
     gameState.bonusTurnNoSkillFor = currentPlayer;
   }
+
   renderSkillPool(1);
   renderSkillPool(2);
   updateTurnIndicator();
@@ -137,10 +136,9 @@ function initBoard() {
     board[y][x] = currentPlayer;
     drawPiece(x, y, currentPlayer);
 
-    // 记录“当前玩家”的上一手，供对手技能使用
+    // 记录“当前玩家”的上一手
     gameState.lastMoveBy[currentPlayer] = { x, y };
-    // 兼容旧技能：保留一份上一手（对方可用）
-    gameState.opponentLastMove = { x, y };
+    gameState.opponentLastMove = { x, y }; // 兼容
 
     // 判胜
     if (checkWin(x, y, currentPlayer)) {
@@ -149,25 +147,17 @@ function initBoard() {
       return;
     }
 
-    // 换手前：如果上一回合是“静如止水的额外回合”，那位已行动完 → 解除“禁用技能”的限制
-    if (gameState.bonusTurnNoSkillFor && gameState.bonusTurnNoSkillFor === currentPlayer) {
-      // 本人额外回合刚用完，下一次自己再获得回合时可以正常用技能
-      // 但注意是“用完这手后换手”，所以在换手后清除更保险：
-      // 我们在切完人后，如果不再是那个人的回合，就清掉它
-    }
-
     // 切给对手
-    const justPlayed = currentPlayer; // 记录刚刚走子的人
+    const justPlayed = currentPlayer;
     currentPlayer = 3 - currentPlayer;
     gameState.currentPlayer = currentPlayer;
 
-    // 如果刚刚走子的人是“额外回合禁技的人”，说明额外回合已结束 → 清空两个标记
+    // 若刚刚走子的人是“额外回合禁技的人”，说明额外回合已结束 → 清空两个标记
     if (gameState.bonusTurnNoSkillFor === justPlayed) {
       gameState.bonusTurnNoSkillFor = null;
-      gameState.bonusTurnPendingFor = null; // 这一轮额外回合周期结束
+      gameState.bonusTurnPendingFor = null;
     }
 
-    // 进入下一回合的统一处理
     handleStartOfTurn();
   };
 }
@@ -246,14 +236,14 @@ function renderSkillPool(playerId) {
   if (skillMode !== 'free') return; // 这版只做自由选
 
   skills.forEach(skill => {
-    // 不可见（隐藏/未被触发/被禁用）直接跳过
-    if (skill.enabled === false) return; // 显式禁用（预防未完成技能）
-    // 依赖技能：如“梅开二度”依赖“飞沙走石”先被该玩家使用
+    if (skill.enabled === false) return; // 显式禁用（占位技能）
+
+    // 依赖关系：如“梅开二度”依赖“飞沙走石”被该玩家使用
     if (skill.dependsOn) {
       const dep = skills.find(s => s.id === skill.dependsOn);
       if (!dep || !dep.usedBy?.includes(playerId)) return;
     }
-    // 可见性（若定义了 visibleFor 则按玩家判定；否则默认可见）
+    // 可见性：支持 hidden/visibleFor（以后触发卡用）
     if (skill.visibleFor && skill.visibleFor[playerId] === false) return;
     if (skill.hidden === true && !(skill.visibleFor && skill.visibleFor[playerId])) return;
 
@@ -275,14 +265,14 @@ function renderSkillPool(playerId) {
       btn.innerText += ' ✅';
     }
 
-    // ③ 被“静如止水”跳过 → 灰
+    // ③ 被静如止水跳过 → 灰
     if (gameState.skipNextTurnFor === playerId) {
       btn.disabled = true;
       btn.title = "本轮被静如止水定身，不能使用技能";
       btn.style.opacity = 0.6;
     }
 
-    // ④ 施放静如止水而得到“额外回合”的那位 → 本回合禁用技能
+    // ④ 额外回合禁技 → 灰
     const isBonusNoSkill = (playerId === currentPlayer) && (gameState.bonusTurnNoSkillFor === currentPlayer);
     if (isBonusNoSkill) {
       btn.disabled = true;
@@ -290,8 +280,15 @@ function renderSkillPool(playerId) {
       btn.style.opacity = 0.6;
     }
 
+    // ⑤ 本回合已用过技能 → 灰（“一回合只允许使用一次技能”）
+    if (playerId === currentPlayer && gameState.skillUsedThisTurn) {
+      btn.disabled = true;
+      btn.title = "本回合已使用过技能，请落子";
+      btn.style.opacity = 0.6;
+    }
+
     btn.onclick = () => {
-      // 双保险：不该点就 return
+      // 双保险：各种不允许的情况
       if (playerId !== currentPlayer) return;
       if (used) return;
       if (gameState.skipNextTurnFor === playerId) {
@@ -302,36 +299,43 @@ function renderSkillPool(playerId) {
         showDialogForPlayer(playerId, "本回合因静如止水效果，不能使用技能！");
         return;
       }
+      if (gameState.skillUsedThisTurn) {
+        showDialogForPlayer(playerId, "本回合已使用过技能，请先落子");
+        return;
+      }
 
-      // 通用守门：对方未落子则禁止（多数“对敌方棋子”的技能都需要对手有上一手）
+      // 通用守门：需要对方上一手
       if (skill.needsOpponentLastMove) {
         if (!gameState.lastMoveBy[3 - playerId]) {
           showDialogForPlayer(playerId, "对方还没有落子，无计可施哦");
           return;
         }
       }
-      // 通用守门：需要敌方棋子存在
+      // 通用守门：需要敌方棋子
       if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) {
         showDialogForPlayer(playerId, "现在对方一子未下，技能无从施展！");
         return;
       }
 
       // 触发技能
-      gameState.currentPlayer = playerId; // 确保技能内部能拿到施放者
+      gameState.currentPlayer = playerId; // 确保技能内部拿到施放者
       skill.effect(gameState);
 
       // 标记使用
       skill.usedBy = skill.usedBy || [];
       skill.usedBy.push(playerId);
 
-      // 技能触发：让某些“被动/反制卡”浮现（只对另一方可见）
+      // ★ 关键：本回合已用技能 → 禁用后续技能，直到玩家完成一次落子
+      gameState.skillUsedThisTurn = true;
+
+      // 触发型技能显隐（保留框架）
       skills.forEach(s2 => {
         if (s2.triggeredBy === skill.id) {
           markSkillVisibleFor(s2.id, 3 - playerId, true, s2.timeout || 3000);
         }
       });
 
-      // 刷新两个面板
+      // 刷新两个面板（让按钮立即置灰）
       renderSkillPool(1);
       renderSkillPool(2);
     };
@@ -351,7 +355,6 @@ function markSkillVisibleFor(skillId, playerId, visible, timeoutMs) {
 
   if (visible && timeoutMs) {
     setTimeout(() => {
-      // 到时自动隐藏（若尚未使用）
       if (!s.usedBy || !s.usedBy.includes(playerId)) {
         s.visibleFor[playerId] = false;
         renderSkillPool(playerId);
