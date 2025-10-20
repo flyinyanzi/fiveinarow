@@ -104,13 +104,42 @@ const skills = [
       const caster = gameState.currentPlayer;
       const target = 3 - caster;
 
-      // 找到目标最近两颗棋子（如果不足两颗则全清）
-      const targetMoves = gameState.moveHistory.filter(m => m.player === target);
-      const lastTwo = targetMoves.slice(-2);
-      lastTwo.forEach(m => {
-        gameState.board[m.y][m.x] = 0;
-        gameState.clearCell(m.x, m.y);
+      // ---- 找到“仍然在棋盘上”的目标最近两子 ----
+      const target = 3 - caster;
+
+      // 从落子历史从后往前找，挑出仍然是 target 的有效棋子坐标
+      const validRecent = [];
+      for (let i = gameState.moveHistory.length - 1; i >= 0 && validRecent.length < 2; i--) {
+        const m = gameState.moveHistory[i];
+        if (m.player !== target) continue;
+        if (gameState.board[m.y]?.[m.x] === target) {
+          validRecent.push({ x: m.x, y: m.y });
+        }
+      }
+
+      // 移除最多两颗（可能只有1颗或0颗）
+      validRecent.forEach(pos => {
+        gameState.board[pos.y][pos.x] = 0;
+        gameState.clearCell(pos.x, pos.y);
       });
+
+      // 更新对方 lastMove（若最后一步被移除，则回溯找到仍存在的最后一步）
+      let newLast = null;
+      for (let i = gameState.moveHistory.length - 1; i >= 0; i--) {
+        const m = gameState.moveHistory[i];
+        if (m.player === target && gameState.board[m.y]?.[m.x] === target) {
+          newLast = { x: m.x, y: m.y };
+          break;
+        }
+      }
+      gameState.lastMoveBy[target] = newLast;
+
+      // 记录：调虎离山本局被此玩家用过（每人限用一次）
+      const tiao = skills.find(s => s.id === 'tiaohulishan');
+      if (tiao) {
+        tiao.usedBy = tiao.usedBy || [];
+        if (!tiao.usedBy.includes(caster)) tiao.usedBy.push(caster);
+      }
 
       gameState.showDialogForPlayer(caster, "调虎离山发动！拿走你的棋子和尊严！");
       setTimeout(() => {
