@@ -37,14 +37,13 @@ const skills = [
     description: "使对方下一轮无法下棋（你将获得一次连续出手，但那次额外回合不能再次用技能）",
     usedBy: [],
     enabled: true,
+    // ★ 新增：要求对手棋子必须存在（统一守门）
+    requiresEnemy: true,
     effect: function (gameState) {
       const caster = gameState.currentPlayer;
       const target = 3 - caster;
-
-      gameState.skipNextTurnFor = target;        // 对方被跳过
-      gameState.bonusTurnPendingFor = caster;    // 额外回合待生效（轮到时才禁技）
-
-      // 双对白：先施放者，再对方反应
+      gameState.skipNextTurnFor = target;
+      gameState.bonusTurnPendingFor = caster;
       gameState.showDialogForPlayer(caster, "静如止水发动！对方顿时凝固在原地！");
       setTimeout(() => {
         gameState.showDialogForPlayer(target, "什么！我被定住了！");
