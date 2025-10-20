@@ -41,7 +41,7 @@ const skills = [
       const target = 3 - caster;
 
       gameState.skipNextTurnFor = target;       // 对方被跳过
-      gameState.bonusTurnNoSkillFor = caster;   // 本人额外回合禁用技能
+      gameState.bonusTurnPendingFor = caster;   // 不立刻禁技，等待额外回合开始时再生效
 
       // 双对白：先施放者，再对方反应
       gameState.showDialogForPlayer(caster, "静如止水发动！对方顿时凝固在原地！");
