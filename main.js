@@ -365,6 +365,10 @@ function cancelPreparedSkill(byPlayerId) {
 function openTiaoHuWindow(attacker) {
   const defender = 3 - attacker;
 
+  // ★ 若 attacker 已用过调虎，则不再开窗
+  const tiao = skills.find(s => s.id === 'tiaohulishan');
+  if (tiao?.usedBy?.includes(attacker)) return;
+
   // 仅对被擒的一方显示3秒可用
   markSkillVisibleFor('tiaohulishan', attacker, true);
   gameState.showDialogForPlayer(attacker, "（调虎离山可发动！）");
@@ -433,6 +437,10 @@ function renderSkillPool(playerId) {
         react &&
         react.defenderId === playerId &&           // 这里 defenderId 其实是“可发动者”
         react.forSkillId === 'tiaohulishan';
+
+      // ★ 新增：如果该玩家已用过调虎离山，就不要再显示按钮
+      const tiao = skills.find(s => s.id === 'tiaohulishan');
+      if (tiao?.usedBy?.includes(playerId)) return;
 
       if (!canCounter) return;
 
