@@ -354,20 +354,8 @@ function cancelPreparedSkill(byPlayerId) {
   // 立即隐藏擒拿按钮
   markSkillVisibleFor('qin_na', defender, false);
 
-  // ★ 关键：被取消的一方（当前回合的进攻方）本回合不再允许使用任何技能，避免循环
-  if (currentPlayer === attacker) {
-    gameState.skillUsedThisTurn = true; // 锁定本回合技能
-  }
-
   renderSkillPool(1);
   renderSkillPool(2);
-
-  // 记录：擒拿（qin_na）本局被防守方用过（每人限用一次）
-  const qinna = skills.find(s => s.id === 'qin_na');
-  if (qinna) {
-    qinna.usedBy = qinna.usedBy || [];
-    if (!qinna.usedBy.includes(defender)) qinna.usedBy.push(defender);
-  }
 
   // 擒拿结束后，为被擒方开启调虎离山窗口
   openTiaoHuWindow(attacker);
