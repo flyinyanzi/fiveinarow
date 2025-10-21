@@ -105,8 +105,6 @@ const skills = [
       const target = 3 - caster;
 
       // ---- 找到“仍然在棋盘上”的目标最近两子 ----
-      const target = 3 - caster;
-
       // 从落子历史从后往前找，挑出仍然是 target 的有效棋子坐标
       const validRecent = [];
       for (let i = gameState.moveHistory.length - 1; i >= 0 && validRecent.length < 2; i--) {
