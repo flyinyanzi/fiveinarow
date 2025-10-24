@@ -78,6 +78,11 @@ const skills = [
     visibleFor: {1: false, 2: false},
     enabled: true,
     effect: function (gameState) {
+      // 先把窗口 & 按钮关掉，防止并发触发
+      if (gameState.reactionWindow?.timeoutId) clearTimeout(gameState.reactionWindow.timeoutId);
+      gameState.reactionWindow = null;
+      markSkillVisibleFor('tiaohulishan', gameState.currentPlayer, false);
+      
       const caster = gameState.currentPlayer;
       const target = 3 - caster;
 
