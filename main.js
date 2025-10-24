@@ -1,18 +1,18 @@
-// main.js
+// main.js  —  综艺模式 + 力拔山兮系 完整实现
 
-let playMode = "pvp";
-let skillMode = "free"; // 当前实现“自由选技能”
+let playMode = "pvp";      // 当前项目先做本地双人对战
+let skillMode = "free";    // 先做“自由选卡”模式
 let currentPlayer = 1;
 let board;
 let gameOver = false;
 
-// ———— UI helpers ————
+// —— UI helpers ——
 function showDialogForPlayer(playerId, text) {
   const box = document.getElementById(`dialog-player${playerId}`);
-  if (box) box.innerText = text;
+  if (box) box.innerText = text || "";
 }
 function updateTurnIndicator() {
-  const el = document.getElementById('turn-indicator');
+  const el = document.getElementById("turn-indicator");
   if (el) el.innerText = `轮到玩家 ${currentPlayer}`;
 }
 function clearDialogs() {
@@ -20,92 +20,108 @@ function clearDialogs() {
   showDialogForPlayer(2, "");
 }
 
-// ———— 游戏状态对象（集中放置） ————
+// —— 游戏状态（集中管理） ——
 const gameState = {
   board: [],
-  moveHistory: [], // 落子历史
-  opponentLastMove: null, // 兼容旧逻辑
-
-  skipNextTurn: false,          // 兼容字段
-  skipNextTurnFor: null,        // 被“静如止水”定住、下回合被跳过的玩家 id（1/2/null）
-  bonusTurnPendingFor: null,    // 谁将获得额外回合（尚未开始）
-  bonusTurnNoSkillFor: null,    // 额外回合禁用技能的玩家 id（额外回合开始时才设）
-  cancelOpponentSkill: false,   // 预留
   currentPlayer: 1,
+  lastMoveBy: { 1: null, 2: null },
+  moveHistory: [],
 
-  lastMoveBy: { 1: null, 2: null }, // 分别记录玩家1/2自己的上一手
+  // 回合效果
+  skipNextTurnFor: null,       // 静如止水：被跳过的人
+  bonusTurnPendingFor: null,   // 待开始的额外回合（开始时禁技）
+  bonusTurnNoSkillFor: null,   // 额外回合禁技的对象
 
   // 回合内限制
-  skillUsedThisTurn: false,     // 本回合是否已使用过技能（每回合最多一次）
-  moveMadeThisTurn: false,      // 本回合是否已落子（落子后不能再用技能）
+  skillUsedThisTurn: false,    // 本回合已使用技能
+  moveMadeThisTurn: false,     // 本回合已落子
 
-  // 反应式技能窗口/准备阶段
-  preparedSkill: null,          // { playerId, skillId }
-  reactionWindow: null,         // { defenderId, forSkillId, timeoutId }
+  // 反应窗口 / 准备阶段（梅开二度 ↔ 擒拿 ↔ 调虎）
+  preparedSkill: null,         // { playerId, skillId }
+  reactionWindow: null,        // { defenderId, forSkillId, timeoutId }
 
+  // 力拔山兮系
+  apocWindow: null,            // { attackerId, defenderId, mode:'liba_select'|'liangji', snapshot, timeoutId, deadline }
+  apocPrompt: null,            // { defenderId, counterId, expiresAt, timerId }
+
+  // 统计与封印
+  libaCount: { 1: 0, 2: 0 },                // 每位玩家力拔山兮使用次数
+  libaSealedFor: null,                       // 被两极反转封印力拔的人（1/2/null）
+  dongshanUsed: { 1: false, 2: false },      // 东山再起一次性
+  shoudaoUsed: { 1: false, 2: false },       // 手刀一次性
+  liangjiUsed: { 1: false, 2: false },       // 两极反转（通常一次）
+
+  // 工具引用
   showDialogForPlayer,
-  clearCell,
+  clearCell
 };
 
-// ———— 启动入口 ————
+// —— 启动入口 ——
 function startGame() {
-  gameState.moveHistory = []; // 落子历史
-  
-  playMode  = document.querySelector('input[name="play-mode"]:checked').value;
-  skillMode = document.querySelector('input[name="skill-mode"]:checked').value;
+  playMode  = document.querySelector('input[name="play-mode"]:checked')?.value || "pvp";
+  skillMode = document.querySelector('input[name="skill-mode"]:checked')?.value || "free";
 
-  document.getElementById('start-menu').style.display = 'none';
-  document.querySelector('.game-container').style.display = 'block';
+  document.getElementById("start-menu").style.display = "none";
+  document.querySelector(".game-container").style.display = "block";
 
   board = Array.from({ length: 15 }, () => Array(15).fill(0));
   gameState.board = board;
 
   currentPlayer = 1;
   gameState.currentPlayer = 1;
-  gameState.opponentLastMove = null;
-  gameState.lastMoveBy = {1: null, 2: null};
+  gameState.lastMoveBy = { 1: null, 2: null };
+  gameState.moveHistory = [];
+
+  gameOver = false;
+
+  // 清状态
   gameState.skipNextTurnFor = null;
   gameState.bonusTurnPendingFor = null;
   gameState.bonusTurnNoSkillFor = null;
+
   gameState.skillUsedThisTurn = false;
   gameState.moveMadeThisTurn = false;
+
   gameState.preparedSkill = null;
   gameState.reactionWindow = null;
-  gameOver = false;
+
+  gameState.apocWindow = null;
+  gameState.apocPrompt = null;
+
+  gameState.libaCount = { 1: 0, 2: 0 };
+  gameState.libaSealedFor = null;
+  gameState.dongshanUsed = { 1: false, 2: false };
+  gameState.shoudaoUsed = { 1: false, 2: false };
+  gameState.liangjiUsed = { 1: false, 2: false };
 
   initBoard();
   handleStartOfTurn();
 }
 
-// ———— 回合开始统一处理：清对白→跳过→生效额外回合禁技→刷新UI ————
+// —— 回合开始：清对白 → 跳过 → 额外回合禁技生效 → 刷新UI ——
 function handleStartOfTurn() {
-  // 1) 新回合开始：清对白 + 重置回合标记
   clearDialogs();
   gameState.skillUsedThisTurn = false;
   gameState.moveMadeThisTurn = false;
 
-  // 2) 如果当前玩家本轮应该被跳过（静如止水效果）
+  // 被静如止水跳过
   if (gameState.skipNextTurnFor === currentPlayer) {
     gameState.skipNextTurnFor = null;
     showDialogForPlayer(currentPlayer, "……啊？我被定住了（本轮被跳过）");
-
     currentPlayer = 3 - currentPlayer;
     gameState.currentPlayer = currentPlayer;
-
     setTimeout(() => {
       clearDialogs();
-      // 跳过完成后，若此时轮到的人是待生效额外回合的人 → 现在才设禁技
       if (gameState.bonusTurnPendingFor === currentPlayer) {
-        gameState.bonusTurnNoSkillFor = currentPlayer; // 额外回合开始：禁技生效
+        gameState.bonusTurnNoSkillFor = currentPlayer;
       }
       renderSkillPool(1);
       renderSkillPool(2);
       updateTurnIndicator();
-    }, 800);
+    }, 700);
     return;
   }
 
-  // 3) 正常开始：如果这个人正好是“待生效的额外回合的人”，现在设禁技
   if (gameState.bonusTurnPendingFor === currentPlayer) {
     gameState.bonusTurnNoSkillFor = currentPlayer;
   }
@@ -115,10 +131,10 @@ function handleStartOfTurn() {
   updateTurnIndicator();
 }
 
-// ———— 棋盘与落子 ————
+// —— 棋盘/UI —— 
 function initBoard() {
-  const canvas = document.getElementById('board');
-  const ctx = canvas.getContext('2d');
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
   const size = 15;
   const cell = canvas.width / size;
 
@@ -139,8 +155,8 @@ function initBoard() {
   canvas.onclick = function (e) {
     if (gameOver) return;
 
-    // 若处于技能准备/反应窗口中，禁止落子
-    if (gameState.preparedSkill || gameState.reactionWindow) {
+    // 任一技能窗口/准备/口令期间 禁止落子
+    if (gameState.preparedSkill || gameState.reactionWindow || gameState.apocWindow || gameState.apocPrompt) {
       showDialogForPlayer(currentPlayer, "技能结算中，稍候再落子……");
       return;
     }
@@ -150,33 +166,25 @@ function initBoard() {
     const y = Math.floor((e.clientY - rect.top) / cell);
     if (board[y][x] !== 0) return;
 
-    // 正式落子
+    // 落子
     board[y][x] = currentPlayer;
     drawPiece(x, y, currentPlayer);
 
-    // 记录落子历史
+    gameState.moveMadeThisTurn = true;
+    gameState.lastMoveBy[currentPlayer] = { x, y };
     gameState.moveHistory.push({ player: currentPlayer, x, y });
 
-    // 回合内标记：已落子
-    gameState.moveMadeThisTurn = true;
-
-    // 记录“当前玩家”的上一手
-    gameState.lastMoveBy[currentPlayer] = { x, y };
-    gameState.opponentLastMove = { x, y }; // 兼容
-
-    // 判胜
-    if (checkWin(x, y, currentPlayer)) {
+    if (checkWinFixed(x, y, currentPlayer)) {
       showDialogForPlayer(currentPlayer, `🎉 玩家${currentPlayer}获胜！`);
       gameOver = true;
       return;
     }
 
-    // 切给对手
     const justPlayed = currentPlayer;
     currentPlayer = 3 - currentPlayer;
     gameState.currentPlayer = currentPlayer;
 
-    // 若刚刚走子的人是“额外回合禁技的人”，说明额外回合已结束 → 清空两个标记
+    // 额外回合结束后清标记
     if (gameState.bonusTurnNoSkillFor === justPlayed) {
       gameState.bonusTurnNoSkillFor = null;
       gameState.bonusTurnPendingFor = null;
@@ -187,8 +195,8 @@ function initBoard() {
 }
 
 function drawPiece(x, y, player) {
-  const canvas = document.getElementById('board');
-  const ctx = canvas.getContext('2d');
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
   const cell = canvas.width / 15;
   const cx = x * cell + cell / 2;
   const cy = y * cell + cell / 2;
@@ -196,18 +204,17 @@ function drawPiece(x, y, player) {
 
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-  ctx.fillStyle = player === 1 ? 'black' : 'white';
+  ctx.fillStyle = player === 1 ? "black" : "white";
   ctx.fill();
   ctx.stroke();
 }
 
 function clearCell(x, y) {
-  const canvas = document.getElementById('board');
-  const ctx = canvas.getContext('2d');
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
   const cell = canvas.width / 15;
   ctx.clearRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
 
-  // 重绘网格局部十字
   ctx.beginPath();
   ctx.moveTo(x * cell + cell / 2, y * cell);
   ctx.lineTo(x * cell + cell / 2, y * cell + cell);
@@ -216,87 +223,60 @@ function clearCell(x, y) {
   ctx.stroke();
 }
 
-function checkWin(x, y, player) {
-  const dirs = [
-    [1, 0], [0, 1], [1, 1], [1, -1]
-  ];
-  for (let [dx, dy] of dirs) {
-    let count = 1;
-    for (let d = 1; d < 5; d++) {
-      const nx = x + dx * d;
-      const ny = y + dy * d;
-      if (board[ny]?.[nx] === player) count++;
-      else break;
-    }
-    for (let d = 1; d < 5; d++) {
-      const nx = x - dx * d;
-      const ny = y - dx * d; // 这里有个错误? 原先代码是 ny = y - dy*d，应 correct.
-    }
-    // 修正上面循环：
-  }
-  // 为防止上面错误，重写函数：
-  return checkWinFixed(x, y, player);
-}
-
+// —— 胜负判断 —— 
 function checkWinFixed(x, y, player) {
-  const dirs = [
-    [1, 0], [0, 1], [1, 1], [1, -1]
-  ];
-  for (let [dx, dy] of dirs) {
+  const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+  for (let [dx,dy] of dirs) {
     let count = 1;
-    for (let d = 1; d < 5; d++) {
-      const nx = x + dx * d;
-      const ny = y + dy * d;
+    for (let d=1; d<5; d++) {
+      const nx = x + dx*d, ny = y + dy*d;
       if (board[ny]?.[nx] === player) count++; else break;
     }
-    for (let d = 1; d < 5; d++) {
-      const nx = x - dx * d;
-      const ny = y - dy * d;
+    for (let d=1; d<5; d++) {
+      const nx = x - dx*d, ny = y - dy*d;
       if (board[ny]?.[nx] === player) count++; else break;
     }
     if (count >= 5) return true;
   }
   return false;
 }
-
-// ———— 工具：统计/判断棋子数（用于“需要敌方棋子”的技能守门） ————
-function countPiecesOf(playerId) {
-  let cnt = 0;
-  for (let y = 0; y < board.length; y++) {
-    for (let x = 0; x < board[y].length; x++) {
-      if (board[y][x] === playerId) cnt++;
+function checkAnyWin(player) {
+  // 粗暴扫描：只要出现任一点作为“连珠中心”满足就算赢
+  for (let y=0; y<15; y++) {
+    for (let x=0; x<15; x++) {
+      if (board[y][x] !== player) continue;
+      if (checkWinFixed(x,y,player)) return true;
     }
   }
-  return cnt;
-}
-function hasEnemyPieceFor(playerId) {
-  return countPiecesOf(3 - playerId) > 0;
+  return false;
 }
 
-// ———— 技能准备/反应流程（第一步：梅开二度 + 擒拿取消） ————
+// —— 工具 —— 
+function countPiecesOf(playerId){
+  let cnt=0;
+  for (let y=0;y<15;y++) for (let x=0;x<15;x++) if (board[y][x]===playerId) cnt++;
+  return cnt;
+}
+function hasEnemyPieceFor(playerId){ return countPiecesOf(3 - playerId) > 0; }
+
+// —— 梅开二度：准备阶段 + 擒拿窗口 —— 
 function startPreparedSkill(playerId, skillId) {
-  // 仅支持 meikaierdhu 的准备阶段
   gameState.preparedSkill = { playerId, skillId };
   showDialogForPlayer(playerId, "梅开二度，准备出手！");
 
-  // 开启对手擒拿反应窗口（3秒）
   const defenderId = 3 - playerId;
-  // 擒拿按钮3秒可见
-  markSkillVisibleFor('qin_na', defenderId, true, 3000);
 
-  // 在窗口内，允许 defender 点击“擒拿”；其他行为一律禁用
-  // 记录窗口
+  // 擒拿3秒反应窗口
   const to = setTimeout(() => {
-    // 超时无人反应 → 结算梅开二度
+    // 无人反应 → 结算
     if (gameState.preparedSkill && gameState.preparedSkill.playerId === playerId && gameState.preparedSkill.skillId === 'meikaierdhu') {
       resolvePreparedSkill();
     }
   }, 3000);
+
   gameState.reactionWindow = { defenderId, forSkillId: 'meikaierdhu', timeoutId: to };
 
-  // 刷新按钮状态
-  renderSkillPool(1);
-  renderSkillPool(2);
+  renderSkillPool(1); renderSkillPool(2);
 }
 
 function resolvePreparedSkill() {
@@ -305,7 +285,6 @@ function resolvePreparedSkill() {
   const caster = prep.playerId;
   const opp = 3 - caster;
 
-  // 结算效果（与飞沙走石一致：再飞一次对手上一手）
   const move = gameState.lastMoveBy[opp];
   if (move) {
     gameState.board[move.y][move.x] = 0;
@@ -315,24 +294,20 @@ function resolvePreparedSkill() {
     showDialogForPlayer(caster, "对方还没有落子，无计可施哦");
   }
 
-  // 标记“梅开二度”被该玩家使用（计入一回合一次技能）
+  // 计入“该玩家用过梅开二度”（每人一次标记，不限次可见与否看你的需求）
   const meikai = skills.find(s => s.id === 'meikaierdhu');
   if (meikai) {
     meikai.usedBy = meikai.usedBy || [];
     if (!meikai.usedBy.includes(caster)) meikai.usedBy.push(caster);
   }
+
   gameState.skillUsedThisTurn = true;
 
-  // 清理窗口与准备态
   if (gameState.reactionWindow?.timeoutId) clearTimeout(gameState.reactionWindow.timeoutId);
   gameState.reactionWindow = null;
   gameState.preparedSkill = null;
 
-  // 擒拿按钮隐藏
-  markSkillVisibleFor('qin_na', opp, false);
-
-  renderSkillPool(1);
-  renderSkillPool(2);
+  renderSkillPool(1); renderSkillPool(2);
 }
 
 function cancelPreparedSkill(byPlayerId) {
@@ -340,257 +315,33 @@ function cancelPreparedSkill(byPlayerId) {
   if (!prep) return;
   const attacker = prep.playerId;
   const defender = 3 - attacker;
-  if (byPlayerId !== defender) return; // 只有防守方可取消
+  if (byPlayerId !== defender) return;
 
-  // 取消准备中的梅开二度（不计入对方的一回合一次技能）
   showDialogForPlayer(defender, "擒拿擒拿，擒擒又拿拿！");
-  showDialogForPlayer(attacker, "我的梅开二度被擒住了？！本回合只能落子……");
+  showDialogForPlayer(attacker, "我的梅开二度被擒住了？！");
 
-  // 清理窗口与准备态 + 停止超时结算
   if (gameState.reactionWindow?.timeoutId) clearTimeout(gameState.reactionWindow.timeoutId);
   gameState.reactionWindow = null;
   gameState.preparedSkill = null;
 
-  // 立即隐藏擒拿按钮
-  markSkillVisibleFor('qin_na', defender, false);
-
-  renderSkillPool(1);
-  renderSkillPool(2);
-
-  // 擒拿结束后，为被擒方开启调虎离山窗口
-  openTiaoHuWindow(attacker);
-}
-
-// 调虎离山触发窗口
-function openTiaoHuWindow(attacker) {
-  const defender = 3 - attacker;
-
-  // ★ 若 attacker 已用过调虎，则不再开窗
-  const tiao = skills.find(s => s.id === 'tiaohulishan');
-  if (tiao?.usedBy?.includes(attacker)) return;
-
-  // 仅对被擒的一方显示3秒可用
+  // 开启“调虎离山”3秒窗口（进攻方作为可发动者）
   markSkillVisibleFor('tiaohulishan', attacker, true);
-  gameState.showDialogForPlayer(attacker, "（调虎离山可发动！）");
-
-  // 3秒后自动消失
-  const timeoutId = setTimeout(() => {
+  const to = setTimeout(() => {
     markSkillVisibleFor('tiaohulishan', attacker, false);
-    // 清理窗口状态，否则棋盘会以为还在结算中
     if (gameState.reactionWindow?.timeoutId) clearTimeout(gameState.reactionWindow.timeoutId);
     gameState.reactionWindow = null;
-
-    renderSkillPool(1);
-    renderSkillPool(2);
+    renderSkillPool(1); renderSkillPool(2);
   }, 3000);
+  gameState.reactionWindow = { defenderId: attacker, forSkillId: 'tiaohulishan', timeoutId: to };
 
-  gameState.reactionWindow = { defenderId: attacker, forSkillId: 'tiaohulishan', timeoutId };
-  renderSkillPool(1);
-  renderSkillPool(2);
+  renderSkillPool(1); renderSkillPool(2);
 }
 
-// ———— 技能 UI 渲染（左右各自卡池） ————
-function renderSkillPool(playerId) {
-  const area = document.getElementById(`player${playerId}-skill-area`);
-  area.innerHTML = '';
-  if (skillMode !== 'free') return; // 这版只做自由选
-
-  const prep = gameState.preparedSkill;
-  const react = gameState.reactionWindow;
-
-  skills.forEach(skill => {
-    if (skill.enabled === false) return; // 显式禁用（占位技能）
-
-    // ---------- 先处理「擒拿」的特殊渲染：在反应窗口内绕开所有通用禁用 ----------
-    if (skill.id === 'qin_na') {
-      // 只有在对方“梅开二度”的3秒反应窗口里，对 defender 才显示成“可点”按钮
-      const canReact =
-        react &&
-        react.defenderId === playerId &&
-        react.forSkillId === 'meikaierdhu';
-
-      // 只有在反应窗口里才显示（或你也可以选择窗口外显示成灰）
-      if (!canReact) return;
-
-      const btn = document.createElement('button');
-      btn.className = 'skill-button';
-      btn.innerText = skill.name;
-      btn.title = '对方梅开二度准备中，可擒拿！';
-
-      // ★ 不走任何通用禁用判定，强制可点
-      btn.disabled = false;
-      btn.style.opacity = 1;
-
-      btn.onclick = () => {
-        // ★ 点击也绕开所有 guard，直接取消
-        cancelPreparedSkill(playerId);
-      };
-
-      area.appendChild(btn);
-      return; // ★ 本技能已渲染，直接结束此 skill 的处理
-    }
-    // ---------- 擒拿特殊处理结束 ----------
-
-    // ---------- 先处理「调虎离山」的特殊渲染：在反应窗口内绕开所有通用禁用 ----------
-    if (skill.id === 'tiaohulishan') {
-      const canCounter =
-        react &&
-        react.defenderId === playerId &&           // 这里 defenderId 其实是“可发动者”
-        react.forSkillId === 'tiaohulishan';
-
-      // ★ 新增：如果该玩家已用过调虎离山，就不要再显示按钮
-      const tiao = skills.find(s => s.id === 'tiaohulishan');
-      if (tiao?.usedBy?.includes(playerId)) return;
-
-      if (!canCounter) return;
-
-      const btn = document.createElement('button');
-      btn.className = 'skill-button';
-      btn.innerText = skill.name;
-      btn.title = '擒拿之后3秒内可发动调虎离山！';
-
-      // ★ 强制可点，绕开通用禁用
-      btn.disabled = false;
-      btn.style.opacity = 1;
-
-      btn.onclick = () => {
-        // 同样绕开 guard，直接执行技能
-        gameState.currentPlayer = playerId; // 确保effect拿到施放者
-        skill.effect(gameState);
-      };
-
-      area.appendChild(btn);
-      return;
-    }
-    // ---------- 调虎离山特殊处理结束 ----------
-
-    // 依赖关系：如“梅开二度”依赖“飞沙走石”被该玩家使用
-    if (skill.dependsOn) {
-      const dep = skills.find(s => s.id === skill.dependsOn);
-      if (!dep || !dep.usedBy?.includes(playerId)) return;
-    }
-    // 可见性：支持 hidden/visibleFor（触发卡用）
-    if (skill.visibleFor && skill.visibleFor[playerId] === false) return;
-    if (skill.hidden === true && !(skill.visibleFor && skill.visibleFor[playerId])) return;
-
-    const used = skill.usedBy?.includes(playerId);
-    const btn = document.createElement('button');
-    btn.className = 'skill-button';
-    btn.innerText = skill.name;
-    btn.title = skill.description;
-
-    // 基础禁用态
-    let disabled = false;
-    let tip = '';
-
-    // ① 非当前玩家 → 灰
-    if (playerId !== currentPlayer) {
-      disabled = true; tip = '非当前回合';
-    }
-
-    // ② 已被该玩家用过 → 灰
-    if (used) {
-      disabled = true; btn.innerText += ' ✅'; tip = '已使用';
-    }
-
-    // ③ 被静如止水跳过 → 灰
-    if (gameState.skipNextTurnFor === playerId) {
-      disabled = true; tip = '本轮被静如止水定身，不能使用技能';
-    }
-
-    // ④ 额外回合禁技 → 灰
-    const isBonusNoSkill = (playerId === currentPlayer) && (gameState.bonusTurnNoSkillFor === currentPlayer);
-    if (isBonusNoSkill) {
-      disabled = true; tip = '本回合因静如止水效果，不能使用技能';
-    }
-
-    // ⑤ 本回合已用过技能 → 灰
-    if (playerId === currentPlayer && gameState.skillUsedThisTurn) {
-      disabled = true; tip = '本回合已使用过技能，请落子';
-    }
-
-    // ⑥ 本回合已落子 → 灰
-    if (playerId === currentPlayer && gameState.moveMadeThisTurn) {
-      disabled = true; tip = '本回合已落子，不能再用技能';
-    }
-
-    // ⑦ 技能准备/反应期间：进攻方准备中 → 该进攻方其它技能禁用；防守方也全禁用
-    if (prep) {
-      if (prep.playerId === playerId) {
-        disabled = true; tip = '技能准备中…';
-      } else {
-        disabled = true; tip = '等待对方技能结算…';
-      }
-    }
-
-    if (disabled) {
-      btn.disabled = true; btn.style.opacity = 0.6; if (tip) btn.title = tip;
-    }
-
-    btn.onclick = () => {
-      if (btn.disabled) return;
-
-      // ★ 通用 guard（擒拿已经在上面绕开了，这里不会走到擒拿）
-      if (playerId !== currentPlayer) return;
-      if (used) return;
-      if (gameState.preparedSkill || gameState.reactionWindow) {
-        showDialogForPlayer(playerId, '技能结算中，请稍候…');
-        return;
-      }
-      if (gameState.skipNextTurnFor === playerId) {
-        showDialogForPlayer(playerId, '我被定住了，本轮不能行动！'); return;
-      }
-      if (gameState.bonusTurnNoSkillFor === playerId) {
-        showDialogForPlayer(playerId, '本回合因静如止水效果，不能使用技能！'); return;
-      }
-      if (gameState.skillUsedThisTurn) {
-        showDialogForPlayer(playerId, '本回合已使用过技能，请先落子'); return;
-      }
-      if (gameState.moveMadeThisTurn) {
-        showDialogForPlayer(playerId, '本回合已落子，不能再用技能'); return;
-      }
-
-      // 梅开二度 → 进入准备阶段（不立刻计次）
-      if (skill.id === 'meikaierdhu') {
-        if (skill.needsOpponentLastMove && !gameState.lastMoveBy[3 - playerId]) {
-          showDialogForPlayer(playerId, '对方还没有落子，无计可施哦'); return;
-        }
-        if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) {
-          showDialogForPlayer(playerId, '现在对方一子未下，技能无从施展！'); return;
-        }
-        startPreparedSkill(playerId, 'meikaierdhu');
-        return;
-      }
-
-      // 其他普通技能（飞沙走石 / 静如止水）
-      if (skill.needsOpponentLastMove && !gameState.lastMoveBy[3 - playerId]) {
-        showDialogForPlayer(playerId, '对方还没有落子，无计可施哦'); return;
-      }
-      if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) {
-        showDialogForPlayer(playerId, '现在对方一子未下，技能无从施展！'); return;
-      }
-
-      gameState.currentPlayer = playerId;
-      skill.effect(gameState);
-
-      skill.usedBy = skill.usedBy || [];
-      skill.usedBy.push(playerId);
-
-      gameState.skillUsedThisTurn = true;
-
-      renderSkillPool(1);
-      renderSkillPool(2);
-    };
-
-    area.appendChild(btn);
-  });
-}
-
-// ———— 让某技能对某一方暂时可见（带超时消失） ————
+// —— mark 可见性 —— 
 function markSkillVisibleFor(skillId, playerId, visible, timeoutMs) {
   const s = skills.find(x => x.id === skillId);
   if (!s) return;
-  s.visibleFor = s.visibleFor || {1: true, 2: true};
+  s.visibleFor = s.visibleFor || { 1: true, 2: true };
   s.visibleFor[playerId] = visible;
 
   renderSkillPool(playerId);
@@ -604,3 +355,478 @@ function markSkillVisibleFor(skillId, playerId, visible, timeoutMs) {
     }, timeoutMs);
   }
 }
+
+// ——————————————————————————————
+// 力拔山兮 / 东山再起 / 手刀 / 两极反转
+// ——————————————————————————————
+
+function deepCopyBoard(bd){ return bd.map(r => r.slice()); }
+function snapshotGame(){
+  return {
+    board: deepCopyBoard(gameState.board),
+    currentPlayer: currentPlayer,
+    lastMoveBy: {
+      1: gameState.lastMoveBy[1] ? { ...gameState.lastMoveBy[1] } : null,
+      2: gameState.lastMoveBy[2] ? { ...gameState.lastMoveBy[2] } : null
+    },
+    moveHistory: gameState.moveHistory.map(m => ({...m}))
+  };
+}
+function applySnapshot(snap){
+  gameState.board = snap.board.map(r => r.slice());
+  board = gameState.board;
+
+  // 重绘全盘
+  initBoard();
+  for (let y=0; y<15; y++) for (let x=0; x<15; x++) {
+    const v = board[y][x];
+    if (v === 1) drawPiece(x,y,1);
+    if (v === 2) drawPiece(x,y,2);
+  }
+
+  gameState.lastMoveBy = {
+    1: snap.lastMoveBy[1] ? { ...snap.lastMoveBy[1] } : null,
+    2: snap.lastMoveBy[2] ? { ...snap.lastMoveBy[2] } : null
+  };
+  gameState.moveHistory = snap.moveHistory.map(m => ({...m}));
+
+  currentPlayer = snap.currentPlayer;
+  gameState.currentPlayer = currentPlayer;
+  updateTurnIndicator();
+}
+
+function startLibashanxi(attackerId) {
+  if (gameOver) return;
+
+  // 被两极反转封印？
+  if (gameState.libaSealedFor === attackerId) {
+    showDialogForPlayer(attackerId, "我的力拔山兮已被封印……");
+    return;
+  }
+
+  const defenderId = 3 - attackerId;
+  const snap = snapshotGame();
+
+  // 统计使用次数（用于演出/统计；不决定触发，两极反转依条件出现按钮）
+  gameState.libaCount[attackerId]++;
+
+  // 清理旧窗口
+  if (gameState.apocWindow?.timeoutId) clearTimeout(gameState.apocWindow.timeoutId);
+  if (gameState.apocPrompt?.timerId) clearInterval(gameState.apocPrompt.timerId);
+  gameState.apocPrompt = null;
+
+  // 判定应显示哪些克制按钮
+  const canDongshan = !gameState.dongshanUsed[defenderId];
+  const canShoudao  = !gameState.shoudaoUsed[defenderId];
+  const canLiangji  = (gameState.dongshanUsed[defenderId] && gameState.shoudaoUsed[defenderId] && !gameState.liangjiUsed[defenderId]);
+
+  let mode = 'liba_select';
+  if (!canDongshan && !canShoudao && canLiangji) {
+    mode = 'liangji';
+  } else if (!canDongshan && !canShoudao && !canLiangji) {
+    // 没有任何克制手段 → A 直接胜
+    resolveLibashanxiSuccess(attackerId);
+    return;
+  }
+
+  const timeoutId = setTimeout(() => {
+    // 3秒内未点按钮 → A 直接胜
+    resolveLibashanxiSuccess(attackerId);
+  }, 3000);
+
+  gameState.apocWindow = {
+    attackerId, defenderId, mode,
+    snapshot: snap,
+    timeoutId,
+    deadline: Date.now() + 3000  // 仅用于显示剩余秒数（可选）
+  };
+
+  // 渲染可选按钮（窗口内强制可点，由 renderSkillPool 特殊渲染）
+  showDialogForPlayer(attackerId, "力拔山兮！！！棋盘已被掀翻！");
+  if (mode === 'liba_select') {
+    showDialogForPlayer(defenderId, "（3秒内可选择：捡起棋盘 / 手刀）");
+  } else {
+    showDialogForPlayer(defenderId, "（3秒内可选择：两极反转）");
+  }
+
+  renderSkillPool(1); renderSkillPool(2);
+}
+
+function openApocPrompt(defenderId, counterId) {
+  const win = gameState.apocWindow;
+  if (!win || win.defenderId !== defenderId) return;
+  if (Date.now() > win.deadline) return;
+
+  // 关闭3秒总计时器，后续由10秒口令控制成败
+  if (win.timeoutId) clearTimeout(win.timeoutId);
+
+  // 清理旧prompt
+  if (gameState.apocPrompt?.timerId) clearInterval(gameState.apocPrompt.timerId);
+  gameState.apocPrompt = null;
+
+  const area = document.getElementById(`player${defenderId}-skill-area`);
+  let panel = document.getElementById(`apoc-prompt-${defenderId}`);
+  if (panel) panel.remove();
+
+  panel = document.createElement('div');
+  panel.id = `apoc-prompt-${defenderId}`;
+  panel.className = 'apoc-prompt';
+  panel.style.marginTop = '8px';
+  panel.style.padding = '6px';
+  panel.style.border = '1px dashed #888';
+
+  // 10秒口令倒计时
+  const deadline = Date.now() + 10000;
+  const isDongshan = (counterId === 'dongshanzaiqi');
+  const tip = isDongshan ? '需要在十秒内输入四个字' : '需要在十秒内输入三个单词';
+  const placeholder = isDongshan ? '东山再起' : 'see you again';
+
+  panel.innerHTML = `
+    <div style="margin-bottom:4px;">${tip}</div>
+    <input id="apoc-input-${defenderId}" type="text" style="width: 160px; margin-right:6px;" placeholder="${placeholder}" />
+    <button id="apoc-send-${defenderId}">发送</button>
+    <span id="apoc-count-${defenderId}" style="margin-left:8px;">(10s)</span>
+  `;
+  area.appendChild(panel);
+
+  const timerId = setInterval(() => {
+    const left = Math.max(0, Math.ceil((deadline - Date.now())/1000));
+    const span = document.getElementById(`apoc-count-${defenderId}`);
+    if (!span) { clearInterval(timerId); return; }
+    span.innerText = `(${left}s)`;
+    if (left <= 0) {
+      clearInterval(timerId);
+      // 超时 → A 胜
+      resolveLibashanxiSuccess(win.attackerId);
+    }
+  }, 300);
+
+  document.getElementById(`apoc-send-${defenderId}`).onclick = () => {
+    const val = document.getElementById(`apoc-input-${defenderId}`).value || "";
+    handleApocSubmit(defenderId, counterId, val, deadline);
+  };
+
+  gameState.apocPrompt = { defenderId, counterId, expiresAt: deadline, timerId };
+}
+
+function handleApocSubmit(defenderId, counterId, text, deadline) {
+  const win = gameState.apocWindow;
+  if (!win || win.defenderId !== defenderId) return;
+
+  // 口令核验
+  let ok = false;
+  if (counterId === 'dongshanzaiqi') {
+    ok = (text.trim() === "东山再起") && (Date.now() <= deadline);
+  } else if (counterId === 'shou_dao') {
+    ok = (text.trim().toLowerCase() === "see you again") && (Date.now() <= deadline);
+  }
+
+  // 清理输入面板与倒计时
+  const panel = document.getElementById(`apoc-prompt-${defenderId}`);
+  if (panel) panel.remove();
+  if (gameState.apocPrompt?.timerId) clearInterval(gameState.apocPrompt.timerId);
+  gameState.apocPrompt = null;
+
+  if (!ok) {
+    // 错误/超时均视作失败 → A 胜
+    resolveLibashanxiSuccess(win.attackerId);
+    return;
+  }
+
+  // 口令成功 → 清理窗口按钮
+  markSkillVisibleFor('dongshanzaiqi', defenderId, false);
+  markSkillVisibleFor('shou_dao', defenderId, false);
+
+  // 执行对应反制
+  const attacker = win.attackerId;
+  if (counterId === 'dongshanzaiqi') {
+    applySnapshot(win.snapshot);
+    gameState.dongshanUsed[defenderId] = true;
+
+    showDialogForPlayer(defenderId, "我东山再起");
+    setTimeout(() => {
+      showDialogForPlayer(attacker, "什么，你竟然创造新词，那可是最高的奥！义！");
+      setTimeout(() => {
+        showDialogForPlayer(defenderId, "我只是参加过九年义务教！育！");
+      }, 600);
+    }, 600);
+
+    gameState.apocWindow = null;
+    renderSkillPool(1); renderSkillPool(2);
+    return;
+  }
+
+  if (counterId === 'shou_dao') {
+    // 复原到力拔前
+    applySnapshot(win.snapshot);
+    // 给进攻方上“静如止水”
+    const caster = defenderId;
+    const target = attacker;
+    gameState.shoudaoUsed[defenderId] = true;
+
+    gameState.skipNextTurnFor = target;
+    gameState.bonusTurnPendingFor = caster;
+
+    showDialogForPlayer(caster, "see you again～");
+    setTimeout(() => { showDialogForPlayer(target, "啊——啊——APT、APT…"); }, 700);
+
+    gameState.apocWindow = null;
+
+    // 切到防守方开始回合（他的额外回合禁技会在 handleStartOfTurn 生效）
+    currentPlayer = caster;
+    gameState.currentPlayer = caster;
+    handleStartOfTurn();
+    return;
+  }
+}
+
+function resolveLibashanxiSuccess(attackerId) {
+  // 清窗口与输入
+  if (gameState.apocWindow?.timeoutId) clearTimeout(gameState.apocWindow.timeoutId);
+  gameState.apocWindow = null;
+  if (gameState.apocPrompt?.timerId) clearInterval(gameState.apocPrompt.timerId);
+  gameState.apocPrompt = null;
+
+  markSkillVisibleFor('dongshanzaiqi', 3 - attackerId, false);
+  markSkillVisibleFor('shou_dao', 3 - attackerId, false);
+
+  showDialogForPlayer(attackerId, "力拔山兮成功！棋盘炸裂——我赢了！");
+  showDialogForPlayer(3 - attackerId, "（没来得及反应……）");
+  gameOver = true;
+}
+
+// 两极反转：在力拔选择窗口中（当东山/手刀都已用）给防守方3秒按钮
+function triggerLiangji(defenderId) {
+  const win = gameState.apocWindow;
+  if (!win || win.defenderId !== defenderId || win.mode !== 'liangji') return;
+
+  const attackerId = win.attackerId;
+
+  // 清理窗口
+  if (win.timeoutId) clearTimeout(win.timeoutId);
+  markSkillVisibleFor('dongshanzaiqi', defenderId, false);
+  markSkillVisibleFor('shou_dao', defenderId, false);
+
+  gameState.apocWindow = null;
+
+  applySwapPieces();
+
+  // 封印进攻方的力拔山兮
+  gameState.libaSealedFor = attackerId;
+  gameState.liangjiUsed[defenderId] = true;
+
+  // 两极反转后立刻重算胜负
+  const p1win = checkAnyWin(1);
+  const p2win = checkAnyWin(2);
+  if (p1win && !p2win) {
+    showDialogForPlayer(1, "（两极反转后）我这边五连了！");
+    gameOver = true; return;
+  }
+  if (p2win && !p1win) {
+    showDialogForPlayer(2, "（两极反转后）我这边五连了！");
+    gameOver = true; return;
+  }
+
+  showDialogForPlayer(defenderId, "揭开你的黑历史，改变你的战斗力！");
+  setTimeout(()=>{ showDialogForPlayer(attackerId, "我竟然还是赢不了你…教练，让您蒙羞了！"); }, 600);
+
+  // 回合不变（保持触发力拔前是谁的回合仍是谁）
+  renderSkillPool(1); renderSkillPool(2); updateTurnIndicator();
+}
+
+function applySwapPieces() {
+  // 翻转棋盘阵营
+  for (let y=0; y<15; y++) for (let x=0; x<15; x++) {
+    if (board[y][x] === 1) board[y][x] = 2;
+    else if (board[y][x] === 2) board[y][x] = 1;
+  }
+  // 重绘
+  initBoard();
+  for (let y=0; y<15; y++) for (let x=0; x<15; x++) {
+    const v = board[y][x];
+    if (v === 1) drawPiece(x,y,1);
+    if (v === 2) drawPiece(x,y,2);
+  }
+  // 交换 moveHistory 的归属
+  gameState.moveHistory = gameState.moveHistory.map(m => ({ player: 3 - m.player, x: m.x, y: m.y }));
+  // lastMoveBy 互换
+  const l1 = gameState.lastMoveBy[1], l2 = gameState.lastMoveBy[2];
+  gameState.lastMoveBy[1] = l2 ? { ...l2 } : null;
+  gameState.lastMoveBy[2] = l1 ? { ...l1 } : null;
+}
+
+// —— 技能面板渲染（左右两侧） ——
+function renderSkillPool(playerId) {
+  const area = document.getElementById(`player${playerId}-skill-area`);
+  area.innerHTML = '';
+  if (skillMode !== 'free') return;
+
+  const prep = gameState.preparedSkill;
+  const react = gameState.reactionWindow;
+  const apoc = gameState.apocWindow;
+
+  skills.forEach(skill => {
+    if (skill.enabled === false) return;
+
+    // —— 特殊渲染 1：擒拿（仅在“梅开二度”准备的3秒窗口内） ——
+    if (skill.id === 'qin_na') {
+      const canReact = react && react.defenderId === playerId && react.forSkillId === 'meikaierdhu';
+      if (!canReact) return;
+
+      const btn = document.createElement('button');
+      btn.className = 'skill-button';
+      btn.innerText = skill.name;
+      btn.title = '对方梅开二度准备中，可擒拿！';
+      btn.onclick = () => cancelPreparedSkill(playerId);
+      area.appendChild(btn);
+      return;
+    }
+
+    // —— 特殊渲染 2：调虎离山（仅在“被擒拿成功”后3秒窗口内，对进攻方开放；每人一次） ——
+    if (skill.id === 'tiaohulishan') {
+      const canCounter = react && react.defenderId === playerId && react.forSkillId === 'tiaohulishan';
+      const already = skills.find(s => s.id === 'tiaohulishan')?.usedBy?.includes(playerId);
+      if (!canCounter || already) return;
+
+      const btn = document.createElement('button');
+      btn.className = 'skill-button';
+      btn.innerText = skill.name;
+      btn.title = '擒拿后可发动调虎离山（3秒内）';
+      btn.onclick = () => { gameState.currentPlayer = playerId; skill.effect(gameState); };
+      area.appendChild(btn);
+      return;
+    }
+
+    // —— 特殊渲染 3：力拔山兮的克制选项（东山 / 手刀）3秒窗口 ——
+    if (skill.id === 'dongshanzaiqi') {
+      const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liba_select' && !gameState.dongshanUsed[playerId];
+      if (!can) return;
+      const btn = document.createElement('button');
+      btn.className = 'skill-button';
+      btn.innerText = skill.name;  // “捡起棋盘”
+      btn.title = '3秒内可点 → 进入10秒口令：输入“东山再起”并发送';
+      btn.onclick = () => { gameState.currentPlayer = playerId; openApocPrompt(playerId, 'dongshanzaiqi'); };
+      area.appendChild(btn);
+      return;
+    }
+    if (skill.id === 'shou_dao') {
+      const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liba_select' && !gameState.shoudaoUsed[playerId];
+      if (!can) return;
+      const btn = document.createElement('button');
+      btn.className = 'skill-button';
+      btn.innerText = skill.name;
+      btn.title = '3秒内可点 → 进入10秒口令：输入“see you again”并发送';
+      btn.onclick = () => { gameState.currentPlayer = playerId; openApocPrompt(playerId, 'shou_dao'); };
+      area.appendChild(btn);
+      return;
+    }
+
+    // —— 特殊渲染 4：两极反转（当B已用完东山/手刀且A再次力拔时，3秒内按钮） ——
+    if (skill.id === 'liangjifanzhuan') {
+      const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liangji' && !gameState.liangjiUsed[playerId];
+      if (!can) return;
+      const btn = document.createElement('button');
+      btn.className = 'skill-button';
+      btn.innerText = skill.name;
+      btn.title = '3秒内可点：双方棋子阵营互换，并封印对手的力拔山兮';
+      btn.onclick = () => { triggerLiangji(playerId); };
+      area.appendChild(btn);
+      return;
+    }
+
+    // —— 通用可见性/依赖 —— 
+    if (skill.dependsOn) {
+      const dep = skills.find(s => s.id === skill.dependsOn);
+      if (!dep || !dep.usedBy?.includes(playerId)) return;
+    }
+    if (skill.visibleFor && skill.visibleFor[playerId] === false) return;
+    if (skill.hidden === true && !(skill.visibleFor && skill.visibleFor[playerId])) return;
+
+    const used = skill.usedBy?.includes(playerId);
+    const btn = document.createElement('button');
+    btn.className = 'skill-button';
+    btn.innerText = skill.name;
+    btn.title = skill.description;
+
+    // 基础禁用态
+    let disabled = false, tip = "";
+
+    // 非当前玩家 → 灰
+    if (playerId !== currentPlayer) { disabled = true; tip = "非当前回合"; }
+
+    // 已使用过（如调虎离山每人一次） → 灰
+    if (used) { disabled = true; btn.innerText += " ✅"; tip = "已使用"; }
+
+    // 静如止水跳过 → 灰
+    if (gameState.skipNextTurnFor === playerId) { disabled = true; tip = "本轮被静如止水定身"; }
+
+    // 额外回合禁技 → 灰
+    const isBonusNoSkill = (playerId === currentPlayer) && (gameState.bonusTurnNoSkillFor === currentPlayer);
+    if (isBonusNoSkill) { disabled = true; tip = "本回合因静如止水效果，不能使用技能"; }
+
+    // 一回合一技
+    if (playerId === currentPlayer && gameState.skillUsedThisTurn) { disabled = true; tip = "本回合已使用过技能，请落子"; }
+
+    // 落子后禁技
+    if (playerId === currentPlayer && gameState.moveMadeThisTurn) { disabled = true; tip = "本回合已落子，不能再用技能"; }
+
+    // 准备/反应/力拔窗口期间：全部禁用（特殊渲染之外）
+    if (prep || react || apoc) { disabled = true; tip = "技能结算中…"; }
+
+    // 力拔山兮被封印（仅对力拔按钮生效）
+    if (skill.id === "libashanxi" && gameState.libaSealedFor === playerId) {
+      disabled = true; tip = "已被两极反转封印";
+    }
+
+    if (disabled) { btn.disabled = true; btn.style.opacity = 0.6; if (tip) btn.title = tip; }
+
+    // 点击
+    btn.onclick = () => {
+      if (btn.disabled) return;
+
+      // 通用守门
+      if (playerId !== currentPlayer) return;
+      if (used) return;
+      if (gameState.preparedSkill || gameState.reactionWindow || gameState.apocWindow || gameState.apocPrompt) {
+        showDialogForPlayer(playerId, "技能结算中，请稍候…"); return;
+      }
+      if (gameState.skipNextTurnFor === playerId) { showDialogForPlayer(playerId, "我被定住了，本轮不能行动！"); return; }
+      if (gameState.bonusTurnNoSkillFor === playerId) { showDialogForPlayer(playerId, "本回合因静如止水效果，不能使用技能！"); return; }
+      if (gameState.skillUsedThisTurn) { showDialogForPlayer(playerId, "本回合已使用过技能，请先落子"); return; }
+      if (gameState.moveMadeThisTurn) { showDialogForPlayer(playerId, "本回合已落子，不能再用技能"); return; }
+
+      // 特例：梅开二度进入准备阶段（不立刻计次）
+      if (skill.id === 'meikaierdhu') {
+        if (skill.needsOpponentLastMove && !gameState.lastMoveBy[3 - playerId]) { showDialogForPlayer(playerId, "对方还没有落子，无计可施哦"); return; }
+        if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) { showDialogForPlayer(playerId, "现在对方一子未下，技能无从施展！"); return; }
+        startPreparedSkill(playerId, 'meikaierdhu'); return;
+      }
+
+      // 特例：力拔山兮（不进入一回合一技；它开启3秒窗口，期间禁其他一切）
+      if (skill.id === 'libashanxi') {
+        startLibashanxi(playerId);
+        return;
+      }
+
+      // 其他普通技能（飞沙/静如止水）
+      if (skill.needsOpponentLastMove && !gameState.lastMoveBy[3 - playerId]) { showDialogForPlayer(playerId, "对方还没有落子，无计可施哦"); return; }
+      if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) { showDialogForPlayer(playerId, "现在对方一子未下，技能无从施展！"); return; }
+
+      // 执行
+      gameState.currentPlayer = playerId;
+      skill.effect(gameState);
+
+      // 标记一回合一技（注意：擒拿/调虎/东山/手刀在特殊渲染里不走这里，因此不计次）
+      skill.usedBy = skill.usedBy || [];
+      skill.usedBy.push(playerId);
+      gameState.skillUsedThisTurn = true;
+
+      renderSkillPool(1); renderSkillPool(2);
+    };
+
+    area.appendChild(btn);
+  });
+}
+
+// 导出给 skills.js 调用的函数（若你用 bundler 可改为模块化）
+window.startGame = startGame;
