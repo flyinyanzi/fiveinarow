@@ -692,7 +692,18 @@ function renderSkillPool(playerId) {
       btn.className = 'skill-button';
       btn.innerText = skill.name;
       btn.title = '擒拿后可发动调虎离山（3秒内）';
-      btn.onclick = () => { gameState.currentPlayer = playerId; skill.effect(gameState); };
+      btn.onclick = () => {
+        // 👉 立刻把按钮“不可点 & 隐藏”，杜绝连点
+        btn.disabled = true;
+        btn.style.opacity = 0.6;
+        btn.onclick = null;
+        // 为保险起见，马上把这张卡对该玩家隐藏
+        markSkillVisibleFor('tiaohulishan', playerId, false);
+
+        // 继续按原流程结算
+        gameState.currentPlayer = playerId;
+        skill.effect(gameState);
+      };
       area.appendChild(btn);
       return;
     }
