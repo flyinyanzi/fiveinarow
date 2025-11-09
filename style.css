@@ -1,3 +1,4 @@
+/* —— 基础 —— */
 body {
   font-family: sans-serif;
   background-color: #f0f0f0;
@@ -6,14 +7,107 @@ body {
   padding: 0;
 }
 
+/* —— 布局容器（改为左右技能列 + 中间棋盘） —— */
 .game-container {
-  max-width: 800px;
-  margin: auto;
-  padding: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: center;
 }
 
-.player-info {
+/* 左右技能列 */
+.skill-column {
+  width: 220px;
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 对话框（左右各一个） */
+.dialog, .dialog-box {
+  background: #fff7c4;
+  padding: 10px;
+  border: 1px solid #999;
+  min-height: 42px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+/* 中间：棋盘与回合提示 */
+.board-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+#turn-indicator {
+  font-weight: bold;
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+canvas {
+  border: 2px solid #000;
+  background-color: #fff;
+  margin-bottom: 6px;
+}
+
+/* —— 技能池（纵向按钮列） —— */
+.skill-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 技能按钮基础 */
+.skill-button {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #bbb;
+  border-radius: 10px;
+  background: #f7f7f7;
+  font-size: 14px;
+  text-align: center;
+  transition: transform .05s ease, background .2s ease, color .2s ease, border-color .2s ease;
+}
+.skill-button:not(:disabled):active { transform: scale(0.98); }
+
+/* 浅灰：不可用（时机未到/被跳过/已落子/窗口期等） */
+.skill-disabled,
+.skill-button:disabled.skill-disabled {
+  background: #e9e9e9;
+  color: #666;
+  border-color: #d4d4d4;
+  cursor: not-allowed;
+}
+
+/* 深灰：已用（一次性技能） + ✅角标 */
+.skill-used,
+.skill-button:disabled.skill-used {
+  background: #b9b9b9;
+  color: #444;
+  border-color: #a5a5a5;
+  cursor: not-allowed;
+  position: relative;
+}
+.skill-used::after,
+.skill-button:disabled.skill-used::after {
+  content: "✅ 已用";
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* 旧版区域（保留兼容性） */
+.player-info {
+  display: none; /* 使用新布局后可隐藏 */
   justify-content: space-between;
   margin-bottom: 10px;
 }
@@ -24,22 +118,9 @@ body {
   align-items: center;
 }
 
-.dialog-box {
-  background: #fff7c4;
-  padding: 10px;
-  margin: 10px 0;
-  border: 1px solid #999;
-  min-height: 40px;
-}
-
-canvas {
-  border: 2px solid #000;
-  background-color: #fff;
-  margin-bottom: 15px;
-}
-
+/* 旧的横向技能容器隐藏或留作兼容 */
 .skills-container {
-  display: flex;
+  display: none; /* 新布局替代之 */
   justify-content: space-between;
   align-items: center;
   background: #eef;
@@ -47,8 +128,36 @@ canvas {
   border-radius: 8px;
 }
 
-#skill-pool {
+#skill-pool { /* 旧ID，保留不影响 */
   flex-grow: 1;
   text-align: left;
   padding-left: 10px;
+}
+
+/* 链接按钮（首页“技能规则说明”） */
+.link-button{
+  display:inline-block;
+  padding:10px 14px;
+  border:1px solid #bbb;
+  border-radius:10px;
+  background:#fff;
+  text-decoration:none;
+  color:#222;
+  font-size:14px;
+}
+.link-button:active{ transform:scale(0.98); }
+
+/* —— 响应式 —— */
+@media (max-width: 980px) {
+  .game-container { gap: 12px; }
+  .skill-column { width: 30vw; }
+  .board-wrap { width: 40vw; }
+  #board { width: 40vw; height: 40vw; }
+}
+@media (max-width: 680px) {
+  .game-container { gap: 8px; padding: 12px; }
+  .skill-column { width: 34vw; }
+  .board-wrap { width: 56vw; }
+  #board { width: 56vw; height: 56vw; }
+  #turn-indicator { font-size: 13px; padding: 5px 8px; }
 }
