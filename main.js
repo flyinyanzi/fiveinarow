@@ -62,7 +62,11 @@ function startGame() {
   skillMode = document.querySelector('input[name="skill-mode"]:checked')?.value || "free";
 
   document.getElementById("start-menu").style.display = "none";
-  document.querySelector(".game-container").style.display = "block";
+  // 恢复为 flex（或不改行，直接删掉这句也行）
+  document.querySelector(".game-container").style.display = "flex";
+
+  // 把模式暴露给 ai.js
+  window.playMode = playMode;
 
   board = Array.from({ length: 15 }, () => Array(15).fill(0));
   gameState.board = board;
@@ -162,8 +166,9 @@ function initBoard() {
     }
 
     const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / cell);
-    const y = Math.floor((e.clientY - rect.top) / cell);
+    const x = Math.floor((e.clientX - rect.left) / (rect.width / 15));
+    const y = Math.floor((e.clientY - rect.top)  / (rect.height / 15));
+
     if (board[y][x] !== 0) return;
 
     // 落子
