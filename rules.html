@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>技能五子棋｜技能规则说明</title>
+  <style>
+    :root{
+      --bg:#fafafa;--card:#fff;--ink:#222;--muted:#666;--line:#eee;--pill:#f0f0f0;--green:#2e7d32;--red:#c62828;--blue:#1565c0;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+    header{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;gap:12px;align-items:center}
+    header h1{font-size:18px;margin:0}
+    main{max-width:900px;margin:18px auto;padding:0 16px 64px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .pill{display:inline-block;background:var(--pill);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--muted);margin-right:6px}
+    h2{font-size:18px;margin:8px 0 6px}
+    h3{font-size:16px;margin:8px 0 6px}
+    ul{margin:6px 0 10px 1.2em}
+    code{background:#f4f4f4;padding:1px 6px;border-radius:6px}
+    .once{color:var(--blue)}
+    .counter{color:var(--green)}
+    .danger{color:var(--red)}
+    .ex{color:#8e24aa}
+    details{background:#fbfbfb;border:1px dashed var(--line);border-radius:10px;padding:10px;margin-top:8px}
+    details > summary{cursor:pointer;color:var(--muted)}
+    footer{color:var(--muted);text-align:center;margin-top:24px}
+    @media (max-width:700px){
+      header{padding:12px}
+      main{padding:0 12px 48px}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>技能五子棋｜技能规则说明</h1>
+    <span class="pill">综艺模式</span>
+    <span class="pill">手机友好</span>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>通用规则</h2>
+      <ul>
+        <li>基础为 15×15 五子棋，先连五者胜。</li>
+        <li>每回合至多使用一次<strong>主动技能</strong>；若已落子，本回合不可再用技能。</li>
+        <li><strong>反应技能</strong>（擒拿 / 调虎离山 / 东山再起 / 手刀 / 两极反转）仅在窗口内出现，不占用回合“本回合一次技能”的次数。</li>
+        <li>技能结算期间（准备 / 反应窗口 / 口令窗口），禁止落子与其他操作。</li>
+        <li>部分技能需对方已有落子或场上有对方棋子，否则不可发动，会提示“对方还没有落子，无计可施哦”。</li>
+      </ul>
+      <details><summary>名词与提示</summary>
+        <ul>
+          <li><strong>准备阶段</strong>：技能已宣告但可被反制的短时间，例如“梅开二度”后给对手的 3 秒“擒拿”窗口。</li>
+          <li><strong>反应窗口</strong>：仅在特定 3 秒内，反制类按钮会出现在指定玩家的技能区。</li>
+          <li><strong>浅灰按钮</strong>：当前不可用（时机未到/被跳过/已落子/窗口期等）。</li>
+          <li><strong>深灰 + ✅</strong>：一次性技能已使用。</li>
+        </ul>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>技能列表</h2>
+
+      <h3>飞沙走石</h3>
+      <div class="row">
+        <span class="pill">主动</span>
+        <span class="pill">需对手上一步</span>
+      </div>
+      <ul>
+        <li>把对手<strong>上一手</strong>的棋子移出棋盘。</li>
+      </ul>
+
+      <h3>静如止水</h3>
+      <div class="row">
+        <span class="pill">主动</span>
+        <span class="pill">需场上有对手棋</span>
+      </div>
+      <ul>
+        <li>对方<strong>下一回合被跳过</strong>；你立即获得一次<strong>额外回合</strong>（该回合<strong>禁用技能</strong>）。</li>
+      </ul>
+
+      <h3>梅开二度</h3>
+      <div class="row">
+        <span class="pill">主动→准备</span>
+        <span class="pill">依赖：飞沙走石</span>
+      </div>
+      <ul>
+        <li>点击后进入<strong>准备阶段</strong>，给予对手 <strong>3 秒</strong>“擒拿”窗口。</li>
+        <li>若 3 秒内没人擒拿 ⇒ 结算：再飞一次对手上一手。</li>
+      </ul>
+
+      <h3>擒拿</h3>
+      <div class="row">
+        <span class="pill">反应</span>
+        <span class="pill">3 秒窗口</span>
+        <span class="pill">可多次（仅窗口内）</span>
+      </div>
+      <ul>
+        <li>仅在对方“梅开二度准备”的 3 秒内出现，点击可<strong>取消</strong>本次“梅开二度”。</li>
+      </ul>
+
+      <h3>调虎离山</h3>
+      <div class="row">
+        <span class="pill">反应</span>
+        <span class="pill">3 秒窗口</span>
+        <span class="pill once">每人一次</span>
+      </div>
+      <ul>
+        <li>当“擒拿”成功后，进攻方获得 3 秒可点的“调虎离山”。</li>
+        <li>效果：移除对手盘面上<strong>仍存在的最近两子</strong>（若不足两子，则移除实际存在的那几颗）。</li>
+      </ul>
+
+      <h3>力拔山兮</h3>
+      <div class="row">
+        <span class="pill">主动</span>
+        <span class="pill danger">绝杀流程</span>
+      </div>
+      <ul>
+        <li>点击后给对手<strong>3 秒选择窗口</strong>（显示“捡起棋盘 / 手刀”，仅显示未用过者）。</li>
+        <li>若 3 秒内无人选择 ⇒ <strong class="danger">立刻获胜</strong>。</li>
+      </ul>
+
+      <h3>东山再起（按钮名：捡起棋盘）</h3>
+      <div class="row">
+        <span class="pill">反制</span>
+        <span class="pill">3 秒内点</span>
+        <span class="pill">10 秒口令</span>
+        <span class="pill once">一次性</span>
+      </div>
+      <ul>
+        <li>点击后弹出输入框，<strong>10 秒内</strong>输入<strong>“东山再起”</strong>并发送 ⇒ 完全复原到力拔前的棋面与回合。</li>
+        <li>台词：B“我东山再起” → A“什么，你竟然创造新词，那可是最高的奥！义！” → B“我只是参加过九年义务教！育！”。</li>
+      </ul>
+
+      <h3>手刀</h3>
+      <div class="row">
+        <span class="pill">反制</span>
+        <span class="pill">3 秒内点</span>
+        <span class="pill">10 秒口令</span>
+        <span class="pill once">一次性</span>
+      </div>
+      <ul>
+        <li>点击后弹出输入框，<strong>10 秒内</strong>输入 <code>see you again</code>（大小写不敏感）并发送 ⇒ 先复原棋面，再对进攻方施加“静如止水”。</li>
+        <li>台词：B“see you again～”，A“啊——啊——APT、APT…”。</li>
+      </ul>
+
+      <h3>两极反转</h3>
+      <div class="row">
+        <span class="pill">反制</span>
+        <span class="pill">3 秒按钮</span>
+        <span class="pill once">通常一次</span>
+      </div>
+      <ul>
+        <li>当防守方已用完“东山再起”和“手刀”，且进攻方再次使用力拔山兮时，防守方技能区出现“两极反转”按钮（3 秒内可点）。</li>
+        <li>效果：棋盘上<strong>双方棋子阵营互换</strong>（黑↔白），并<strong class="counter">封印</strong>进攻方的“力拔山兮”。随后立刻重算胜负。</li>
+        <li>台词：B“揭开你的黑历史，改变你的战斗力！”；A“我竟然还是赢不了你…教练，让您蒙羞了！”。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>AI 行为（普通难度默认）</h2>
+      <ul>
+        <li>主动技能：<strong>60%</strong> 使用（择收益最高），<strong>40%</strong> 直接落子。</li>
+        <li>擒拿：<strong>70%</strong>；调虎离山：<strong>75%</strong>。</li>
+        <li>力拔反制：东山/手刀 <strong>90%</strong>（优先手刀），两极反转 <strong>80%</strong>。</li>
+        <li>“必胜/必防（盘面）”有温和兜底（少量失误率，保留人味儿）。</li>
+      </ul>
+    </div>
+
+    <footer>有新梗就继续加！🎉</footer>
+  </main>
+</body>
+</html>
