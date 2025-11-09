@@ -15,9 +15,11 @@
 
   // 哪个玩家是AI：仅在玩家 vs AI（pve）时启用玩家2为AI
   function getIsAI() {
-    const pve = (window.playMode === 'pve');
+    const mode = String(window.playMode || '').toLowerCase();
+    const pve = (mode === 'pve');
     return { 1: false, 2: !!pve };
   }
+
 
   function rand() { return Math.random(); }
 
