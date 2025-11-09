@@ -75,26 +75,26 @@
     <label><input type="radio" name="play-mode" value="pvp" checked> 玩家 vs 玩家</label>
     <label><input type="radio" name="play-mode" value="pve"> 玩家 vs AI</label>
 
-    <h2>选择技能玩法</h2>
-    <label><input type="radio" name="skill-mode" value="free" checked> 自由选技能</label>
-    <label><input type="radio" name="skill-mode" value="random"> 抽卡模式</label>
-
     <button onclick="startGame()">开始游戏</button>
   </div>
 
-  <div class="game-container" style="display:none">
-    <canvas id="board" width="600" height="600"></canvas>
-
-    <div id="turn-indicator" style="text-align:center;font-weight:bold;font-size:18px;padding:6px 0;"></div>
-
-    <div class="dialog-wrapper">
-      <div id="dialog-player1" class="dialog-box left"></div>
-      <div id="dialog-player2" class="dialog-box right"></div>
+  <div class="game-container">
+    <!-- 左列：玩家1 -->
+    <div class="skill-column left">
+      <div class="dialog" id="dialog-player1"></div>
+      <div id="player1-skill-area" class="skill-area"></div>
     </div>
 
-    <div id="skill-panels">
-      <div id="player1-skill-area" class="skill-side left"></div>
-      <div id="player2-skill-area" class="skill-side right"></div>
+    <!-- 中间：棋盘 -->
+    <div class="board-wrap">
+      <div id="turn-indicator"></div>
+      <canvas id="board" width="600" height="600"></canvas>
+    </div>
+
+    <!-- 右列：玩家2 -->
+    <div class="skill-column right">
+      <div class="dialog" id="dialog-player2"></div>
+      <div id="player2-skill-area" class="skill-area"></div>
     </div>
   </div>
 
