@@ -2,13 +2,14 @@
 // 依赖全局：gameState, skills, currentPlayer, window.playMode, document DOM
 
 (function () {
-  // —— 难度：NORMAL ——（可改 EASY / NORMAL / HARD）
-  const DIFFICULTY = 'NORMAL';
-  const CFG = {
+  // —— 难度：从首页传入，默认 NORMAL ——（EASY / NORMAL / HARD）
+  const DIFFICULTY = String((window.aiDifficulty || 'NORMAL')).toUpperCase();
+  const CFG_MAP = {
     EASY:   { activeSkill: 0.50, qinna: 0.60, tiaohu: 0.65,  libaCounterOH: 0.80, libaCounterLJ: 0.70, mustWinMiss: 0.10, mustBlockProb: 0.80 },
     NORMAL: { activeSkill: 0.60, qinna: 0.70, tiaohu: 0.75,  libaCounterOH: 0.90, libaCounterLJ: 0.80, mustWinMiss: 0.05, mustBlockProb: 0.95 },
     HARD:   { activeSkill: 0.70, qinna: 0.80, tiaohu: 0.85,  libaCounterOH: 0.95, libaCounterLJ: 0.90, mustWinMiss: 0.01, mustBlockProb: 1.00 },
-  }[DIFFICULTY];
+  };
+  const CFG = CFG_MAP[DIFFICULTY] || CFG_MAP.NORMAL;
 
   const BOARD_SIZE = 15;
 
