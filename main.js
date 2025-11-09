@@ -682,7 +682,7 @@ function renderSkillPool(playerId) {
       return;
     }
 
-    // —— 特殊渲染 2：调虎离山（仅在“被擒拿成功”后3秒窗口内，对进攻方开放；每人一次） ——
+    // —— 特殊渲染 2：调虎离山（被擒后3秒窗口，对进攻方开放；每人一次） ——
     if (skill.id === 'tiaohulishan') {
       const canCounter = react && react.defenderId === playerId && react.forSkillId === 'tiaohulishan';
       const already = skills.find(s => s.id === 'tiaohulishan')?.usedBy?.includes(playerId);
@@ -693,14 +693,12 @@ function renderSkillPool(playerId) {
       btn.innerText = skill.name;
       btn.title = '擒拿后可发动调虎离山（3秒内）';
       btn.onclick = () => {
-        // 👉 立刻把按钮“不可点 & 隐藏”，杜绝连点
+        // 一锤子买卖：立刻锁死并隐藏，杜绝连点
         btn.disabled = true;
-        btn.style.opacity = 0.6;
         btn.onclick = null;
-        // 为保险起见，马上把这张卡对该玩家隐藏
+        btn.classList.add('skill-disabled');
         markSkillVisibleFor('tiaohulishan', playerId, false);
 
-        // 继续按原流程结算
         gameState.currentPlayer = playerId;
         skill.effect(gameState);
       };
@@ -765,7 +763,7 @@ function renderSkillPool(playerId) {
     // 非当前玩家 → 灰
     if (playerId !== currentPlayer) { disabled = true; tip = "非当前回合"; }
 
-    // 已使用过（如调虎离山每人一次） → 灰
+    // 已使用过（如调虎离山/东山/手刀/两极） → 深灰
     if (used) { disabled = true; btn.innerText += " ✅"; tip = "已使用"; }
 
     // 静如止水跳过 → 灰
@@ -789,7 +787,13 @@ function renderSkillPool(playerId) {
       disabled = true; tip = "已被两极反转封印";
     }
 
-    if (disabled) { btn.disabled = true; btn.style.opacity = 0.6; if (tip) btn.title = tip; }
+    if (disabled) {
+      btn.disabled = true;
+      // 区分“已用(深灰)”与“不可用(浅灰)”
+      if (used) btn.classList.add('skill-used');
+      else      btn.classList.add('skill-disabled');
+      if (tip) btn.title = tip;
+    }
 
     // 点击
     btn.onclick = () => {
@@ -827,7 +831,7 @@ function renderSkillPool(playerId) {
       gameState.currentPlayer = playerId;
       skill.effect(gameState);
 
-      // 标记一回合一技（注意：擒拿/调虎/东山/手刀在特殊渲染里不走这里，因此不计次）
+      // 标记一回合一技（反应技不计次）
       skill.usedBy = skill.usedBy || [];
       skill.usedBy.push(playerId);
       gameState.skillUsedThisTurn = true;
@@ -838,6 +842,7 @@ function renderSkillPool(playerId) {
     area.appendChild(btn);
   });
 }
+
 
 // 导出给 skills.js 调用的函数（若你用 bundler 可改为模块化）
 window.startGame = startGame;
