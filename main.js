@@ -58,28 +58,38 @@ const gameState = {
 
 // —— 启动入口 ——
 function startGame() {
-  playMode  = document.querySelector('input[name="play-mode"]:checked')?.value || "pvp";
-  skillMode = document.querySelector('input[name="skill-mode"]:checked')?.value || "free";
+  // —— 读取用户选择并标准化 —— //
+  const playModeInput = document.querySelector('input[name="play-mode"]:checked');
+  const skillModeInput = document.querySelector('input[name="skill-mode"]:checked');
+  const diffSel = document.getElementById('ai-difficulty');
 
-  document.getElementById("start-menu").style.display = "none";
-  // 恢复为 flex（或不改行，直接删掉这句也行）
-  document.querySelector(".game-container").style.display = "flex";
+  playMode  = (playModeInput ? playModeInput.value : 'pvp').toLowerCase();   // 'pvp' | 'pve'
+  skillMode = (skillModeInput ? skillModeInput.value : 'free');              // 目前我们用自由选
+  const aiDiff = (diffSel ? diffSel.value : 'NORMAL').toUpperCase();         // 'EASY'|'NORMAL'|'HARD'
 
-  // 把模式暴露给 ai.js
+  // —— 写入全局，供 ai.js 轮询使用 —— //
   window.playMode = playMode;
-  window.aiDifficulty = (document.getElementById('ai-difficulty')?.value || 'NORMAL');
+  window.aiDifficulty = aiDiff;
 
+  // —— 关闭开始菜单，恢复三栏布局（flex） —— //
+  const startMenu = document.getElementById("start-menu");
+  if (startMenu) startMenu.style.display = "none";
+  const container = document.querySelector(".game-container");
+  if (container) container.style.display = "flex";
+
+  // —— 棋面与状态初始化 —— //
   board = Array.from({ length: 15 }, () => Array(15).fill(0));
   gameState.board = board;
 
   currentPlayer = 1;
   gameState.currentPlayer = 1;
+
   gameState.lastMoveBy = { 1: null, 2: null };
   gameState.moveHistory = [];
 
   gameOver = false;
 
-  // 清状态
+  // 清空技能/窗口等状态
   gameState.skipNextTurnFor = null;
   gameState.bonusTurnPendingFor = null;
   gameState.bonusTurnNoSkillFor = null;
@@ -99,8 +109,9 @@ function startGame() {
   gameState.shoudaoUsed = { 1: false, 2: false };
   gameState.liangjiUsed = { 1: false, 2: false };
 
+  // —— 启动 —— //
   initBoard();
-  handleStartOfTurn();
+  handleStartOfTurn(); // 会渲染回合提示与技能面板
 }
 
 // —— 回合开始：清对白 → 跳过 → 额外回合禁技生效 → 刷新UI ——
