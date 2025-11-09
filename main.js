@@ -67,6 +67,7 @@ function startGame() {
 
   // 把模式暴露给 ai.js
   window.playMode = playMode;
+  window.aiDifficulty = (document.getElementById('ai-difficulty')?.value || 'NORMAL');
 
   board = Array.from({ length: 15 }, () => Array(15).fill(0));
   gameState.board = board;
