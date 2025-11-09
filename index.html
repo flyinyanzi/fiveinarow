@@ -71,6 +71,16 @@
 </head>
 <body>
   <div id="start-menu" class="start-menu">
+    <!-- 在开始按钮周围，新增一个说明页按钮（新标签页打开） -->
+    <div id="start-menu">
+      <!-- 你的模式/玩法选择... -->
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+        <button onclick="startGame()">开始游戏</button>
+        <a href="rules.html" target="_blank" rel="noopener" class="link-button">技能规则说明</a>
+      </div>
+    </div>
+    
     <h2>选择对战模式</h2>
     <label><input type="radio" name="play-mode" value="pvp" checked> 玩家 vs 玩家</label>
     <label><input type="radio" name="play-mode" value="pve"> 玩家 vs AI</label>
