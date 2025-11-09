@@ -1,8 +1,8 @@
 // ai.js — 旁路AI（读状态 + 点击按钮/棋盘）
-// 依赖全局：gameState, skills, currentPlayer, document DOM
+// 依赖全局：gameState, skills, currentPlayer, window.playMode, document DOM
 
 (function () {
-  // —— 配置：难度 NORMAL，对应我们刚刚定的概率 ——
+  // —— 难度：NORMAL ——（可改 EASY / NORMAL / HARD）
   const DIFFICULTY = 'NORMAL';
   const CFG = {
     EASY:   { activeSkill: 0.50, qinna: 0.60, tiaohu: 0.65,  libaCounterOH: 0.80, libaCounterLJ: 0.70, mustWinMiss: 0.10, mustBlockProb: 0.80 },
@@ -10,24 +10,29 @@
     HARD:   { activeSkill: 0.70, qinna: 0.80, tiaohu: 0.85,  libaCounterOH: 0.95, libaCounterLJ: 0.90, mustWinMiss: 0.01, mustBlockProb: 1.00 },
   }[DIFFICULTY];
 
-  // 哪个玩家是AI（这里设定玩家2为AI；如果你想切换，在首页做个选项再写入这里即可）
-  const isAI = { 1: false, 2: true };
-
   const BOARD_SIZE = 15;
+
+  // 哪个玩家是AI：仅在玩家 vs AI（pve）时启用玩家2为AI
+  function getIsAI() {
+    const pve = (window.playMode === 'pve');
+    return { 1: false, 2: !!pve };
+  }
 
   function rand() { return Math.random(); }
 
-  // ====== 轮询主循环 ======
+  // ====== 轮询主循环（非侵入式） ======
   setInterval(tick, 120);
 
   function tick() {
     if (!window.gameState || !document.getElementById('board')) return;
 
+    const isAI = getIsAI();
     const who = gameState.currentPlayer;
+
     if (!isAI[who]) return;
     if (window.gameOver) return;
 
-    // 有任一窗口/口令/准备 → 交由专门反应逻辑
+    // 有任何技能窗口/输入 → 交由专门反应逻辑或等待
     if (gameState.apocWindow) { handleLibaCounter(who); return; }
     if (gameState.reactionWindow) { handleQinnaTiaohu(who); return; }
     if (gameState.preparedSkill || gameState.apocPrompt) return; // 等待结算/输入
@@ -44,7 +49,6 @@
     // 1) 擒拿（对手梅开二度准备）
     if (r.forSkillId === 'meikaierdhu' && r.defenderId === aiId) {
       if (rand() <= CFG.qinna) {
-        // 找到我这一侧的“擒拿”按钮并点击
         clickButtonInArea(aiId, b => /擒拿/.test(b.innerText));
       }
       return;
@@ -74,17 +78,16 @@
 
     if (w.mode === 'liba_select') {
       // 优先手刀（若可用）
-      const canShoudao = buttonExists(aiId, /手刀/);
+      const canShoudao  = buttonExists(aiId, /手刀/);
       const canDongshan = buttonExists(aiId, /捡起棋盘/);
 
       if ((canShoudao || canDongshan) && rand() <= CFG.libaCounterOH) {
         if (canShoudao) {
           clickButtonInArea(aiId, b => /手刀/.test(b.innerText));
-          // 自动输入口令
-          setTimeout(() => submitApoc(aiId, 'see you again'), 200);
+          setTimeout(() => submitApoc(aiId, 'see you again'), 160);
         } else {
           clickButtonInArea(aiId, b => /捡起棋盘/.test(b.innerText));
-          setTimeout(() => submitApoc(aiId, '东山再起'), 200);
+          setTimeout(() => submitApoc(aiId, '东山再起'), 160);
         }
       }
     }
@@ -99,7 +102,7 @@
 
   function submitApoc(playerId, text) {
     const input = document.getElementById(`apoc-input-${playerId}`);
-    const send = document.getElementById(`apoc-send-${playerId}`);
+    const send  = document.getElementById(`apoc-send-${playerId}`);
     if (input && send) {
       input.value = text;
       send.click();
@@ -137,7 +140,6 @@
 
     // —— 60% 主动技 —— 
     if (rand() <= CFG.activeSkill) {
-      // 选择最优技能（启发式排序）
       if (tryBestSkill(me)) return;
     }
 
@@ -151,42 +153,36 @@
     const area = document.getElementById(`player${me}-skill-area`);
     if (!area) return false;
     const btns = Array.from(area.querySelectorAll('button')).filter(b => !b.disabled);
-
     if (!btns.length) return false;
 
-    // 优先级：静如止水 > 飞沙走石 > 梅开二度 > 力拔山兮
-    //   - 力拔山兮：若对手仍有东山/手刀可用，则尽量不点（避免白给）
-    //   - 梅开二度：有一定价值，但可能被擒拿；保持在飞沙之后
+    // 敌人是否仍有东山/手刀：有则尽量不点力拔（避免白给）
     const hasDongshan = !gameState.dongshanUsed[3 - me];
     const hasShoudao  = !gameState.shoudaoUsed[3 - me];
 
-    const order = [
-      /静如止水/,
-      /飞沙走石/,
-      /梅开二度/,
-      /力拔山兮/
-    ];
+    // 优先级：静如止水 > 飞沙走石 > 梅开二度 > 力拔山兮（若对方有反制则跳过）
+    const order = [/静如止水/, /飞沙走石/, /梅开二度/, /力拔山兮/];
 
     for (const regex of order) {
       for (const b of btns) {
         if (!regex.test(b.innerText)) continue;
-        if (/力拔山兮/.test(b.innerText) && (hasDongshan || hasShoudao)) continue; // 敌方仍可能反制时，少点
+        if (/力拔山兮/.test(b.innerText) && (hasDongshan || hasShoudao)) continue; // 对面还可能反制，先别点
         b.click();
-        // 若是力拔山兮，将进入窗口，后续由 handleLibaCounter 接管
+        // 力拔会进入窗口，后续由 handleLibaCounter 接管
         return true;
       }
     }
     return false;
   }
 
-  // ====== 模拟点击棋盘 ======
+  // ====== 模拟点击棋盘（用实际渲染尺寸，手机不偏移） ======
   function simulateBoardClick(x, y) {
     const canvas = document.getElementById('board');
     const rect = canvas.getBoundingClientRect();
-    const cell = canvas.width / BOARD_SIZE;
+    const cellX = rect.width  / BOARD_SIZE;
+    const cellY = rect.height / BOARD_SIZE;
 
-    const cx = rect.left + x * cell + cell / 2;
-    const cy = rect.top  + y * cell + cell / 2;
+    const cx = rect.left + x * cellX + cellX / 2;
+    const cy = rect.top  + y * cellY + cellY / 2;
 
     canvas.dispatchEvent(new MouseEvent('click', {
       view: window,
@@ -199,12 +195,12 @@
 
   // ====== 即胜/评估/候选 ======
   function findImmediateWin(bd, player) {
-    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+    for (let y = 0; y < BOARD_SIZE; y++) for (let x = 0; x < BOARD_SIZE; x++) {
       if (bd[y][x] !== 0) continue;
       bd[y][x] = player;
       const win = checkWinAt(bd, x, y, player);
       bd[y][x] = 0;
-      if (win) return {x,y};
+      if (win) return { x, y };
     }
     return null;
   }
@@ -234,7 +230,7 @@
       const [xs,ys] = key.split(','); const x=+xs, y=+ys;
 
       // 简单评估：自己分 - 对手分（落此点）
-      const score = evalPoint(bd, x, y, me) - 0.8*evalPoint(bd, x, y, opp);
+      const score = evalPoint(bd, x, y, me) - 0.8 * evalPoint(bd, x, y, opp);
       if (score > bestScore) { bestScore = score; best = {x,y}; }
     }
     return best || {x:7,y:7};
@@ -253,9 +249,7 @@
   function evalPoint(bd, x, y, p) {
     let sum = 0;
     const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-    for (const [dx,dy] of dirs) {
-      sum += lineScore(bd, x, y, dx, dy, p);
-    }
+    for (const [dx,dy] of dirs) sum += lineScore(bd, x, y, dx, dy, p);
     return sum;
   }
 
@@ -266,9 +260,8 @@
     const openEnds = countOpenEnds(bd, x, y, dx, dy, p);
     bd[y][x] = 0;
 
-    // 简单规则化评分
     if (count >= 5) return 1e6;
-    if (count === 4 && openEnds >= 1) return 50000; // 冲四
+    if (count === 4 && openEnds >= 1) return 50000; // 冲四/活四
     if (count === 3 && openEnds === 2) return 20000; // 活三
     if (count === 3 && openEnds === 1) return 8000;  // 眠三
     if (count === 2 && openEnds === 2) return 3000;  // 活二
