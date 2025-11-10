@@ -665,6 +665,12 @@ function triggerLiangji(defenderId) {
 
   // 回合不变（保持触发力拔前是谁的回合仍是谁）
   renderSkillPool(1); renderSkillPool(2); updateTurnIndicator();
+
+  // 若是 PVE 且轮到玩家2(AI)，主动提醒一次（防止某些环境对 setInterval 的节流）
+  if (window.playMode === 'pve' && gameState.currentPlayer === 2 && window.__ai_nudge) {
+    setTimeout(() => window.__ai_nudge(), 30);
+  }
+
 }
 
 function applySwapPieces() {
