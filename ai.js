@@ -1,5 +1,4 @@
 // ai.js — 旁路AI（读状态 + 点击按钮/棋盘）
-// 依赖全局：gameState, skills, currentPlayer, window.playMode, document DOM
 
 (function () {
   // —— 难度：从首页传入，默认 NORMAL ——（EASY / NORMAL / HARD）
@@ -13,28 +12,21 @@
 
   const BOARD_SIZE = 15;
 
-  // 哪个玩家是AI：仅在玩家 vs AI（pve）时启用玩家2为AI
+  // 哪个玩家是AI：仅在玩家 vs AI（pve）时启用玩家2为AI（全局优先，DOM 兜底）
   function getIsAI() {
-    // 1) 先看全局（startGame 写入的）
     let mode = (typeof window !== 'undefined' ? window.playMode : '') || '';
-
-    // 2) 兜底：还没写入全局时（或某些浏览器 timing 差异），直接读开始菜单单选框
     if (!mode) {
       const picked = document.querySelector('input[name="play-mode"]:checked');
       if (picked && picked.value) mode = picked.value;
     }
-
-    mode = String(mode).trim().toLowerCase();  // 统一大小写与空格
+    mode = String(mode).trim().toLowerCase();
     const pve = (mode === 'pve');
-
     return { 1: false, 2: !!pve };
   }
 
   function rand() { return Math.random(); }
 
   // ====== 轮询主循环（非侵入式） ======
-  setInterval(tick, 120);
-
   function tick() {
     if (!window.gameState || !document.getElementById('board')) return;
 
@@ -49,28 +41,29 @@
     if (gameState.reactionWindow) { handleQinnaTiaohu(who); return; }
     if (gameState.preparedSkill || gameState.apocPrompt) return; // 等待结算/输入
 
-    // 轮到AI的正常回合
+    if (window.AI_DEBUG) console.log('[AI] tick turn', who);
     aiTurn(who);
   }
+
+  // 允许主程序“提醒”我走（解决个别环境 setInterval 被系统节流）
+  window.__ai_nudge = function() {
+    try { tick(); } catch (e) { console.warn('[AI] nudge error', e); }
+  };
+
+  // 轮询（120ms 一次）
+  setInterval(tick, 120);
 
   // ====== 反应：梅开二度窗口（擒拿）/ 调虎离山 ======
   function handleQinnaTiaohu(aiId) {
     const r = gameState.reactionWindow;
     if (!r) return;
 
-    // 1) 擒拿（对手梅开二度准备）
     if (r.forSkillId === 'meikaierdhu' && r.defenderId === aiId) {
-      if (rand() <= CFG.qinna) {
-        clickButtonInArea(aiId, b => /擒拿/.test(b.innerText));
-      }
+      if (rand() <= CFG.qinna) clickButtonInArea(aiId, b => /擒拿/.test(b.innerText));
       return;
     }
-
-    // 2) 调虎离山（被擒后3秒，进攻方=defenderId）
     if (r.forSkillId === 'tiaohulishan' && r.defenderId === aiId) {
-      if (rand() <= CFG.tiaohu) {
-        clickButtonInArea(aiId, b => /调虎离山/.test(b.innerText));
-      }
+      if (rand() <= CFG.tiaohu) clickButtonInArea(aiId, b => /调虎离山/.test(b.innerText));
       return;
     }
   }
@@ -81,15 +74,11 @@
     if (!w || w.defenderId !== aiId) return;
 
     if (w.mode === 'liangji') {
-      // 两极反转按钮（3秒内）
-      if (rand() <= CFG.libaCounterLJ) {
-        clickButtonInArea(aiId, b => /两极反转/.test(b.innerText));
-      }
+      if (rand() <= CFG.libaCounterLJ) clickButtonInArea(aiId, b => /两极反转/.test(b.innerText));
       return;
     }
 
     if (w.mode === 'liba_select') {
-      // 优先手刀（若可用）
       const canShoudao  = buttonExists(aiId, /手刀/);
       const canDongshan = buttonExists(aiId, /捡起棋盘/);
 
@@ -125,9 +114,7 @@
     const area = document.getElementById(`player${playerId}-skill-area`);
     if (!area) return false;
     const btns = area.querySelectorAll('button');
-    for (const b of btns) {
-      if (!b.disabled && predicate(b)) { b.click(); return true; }
-    }
+    for (const b of btns) if (!b.disabled && predicate(b)) { b.click(); return true; }
     return false;
   }
 
@@ -136,57 +123,42 @@
     const me = aiId, opp = 3 - aiId;
     const board = gameState.board;
 
-    // —— 必胜线：若有“一手即胜”，按难度给一点失误率，否则直接赢 —— 
     const winMove = findImmediateWin(board, me);
-    if (winMove && rand() > CFG.mustWinMiss) {
-      simulateBoardClick(winMove.x, winMove.y);
-      return;
-    }
+    if (winMove && rand() > CFG.mustWinMiss) { simulateBoardClick(winMove.x, winMove.y); return; }
 
-    // —— 必防线（盘面）：对手是否有“一手即胜”，若有则高概率堵 —— 
     const oppWin = findImmediateWin(board, opp);
-    if (oppWin && rand() <= CFG.mustBlockProb) {
-      simulateBoardClick(oppWin.x, oppWin.y);
-      return;
-    }
+    if (oppWin && rand() <= CFG.mustBlockProb) { simulateBoardClick(oppWin.x, oppWin.y); return; }
 
-    // —— 60% 主动技 —— 
-    if (rand() <= CFG.activeSkill) {
-      if (tryBestSkill(me)) return;
-    }
+    if (rand() <= CFG.activeSkill) { if (tryBestSkill(me)) return; }
 
-    // —— 正常下棋（启发式评估）——
     const best = pickHeuristicMove(board, me, opp);
     simulateBoardClick(best.x, best.y);
   }
 
-  // ====== 选择最优技能（只靠按钮 + 启发式） ======
   function tryBestSkill(me) {
     const area = document.getElementById(`player${me}-skill-area`);
     if (!area) return false;
     const btns = Array.from(area.querySelectorAll('button')).filter(b => !b.disabled);
     if (!btns.length) return false;
 
-    // 敌人是否仍有东山/手刀：有则尽量不点力拔（避免白给）
     const hasDongshan = !gameState.dongshanUsed[3 - me];
     const hasShoudao  = !gameState.shoudaoUsed[3 - me];
 
-    // 优先级：静如止水 > 飞沙走石 > 梅开二度 > 力拔山兮（若对方有反制则跳过）
     const order = [/静如止水/, /飞沙走石/, /梅开二度/, /力拔山兮/];
 
     for (const regex of order) {
       for (const b of btns) {
         if (!regex.test(b.innerText)) continue;
-        if (/力拔山兮/.test(b.innerText) && (hasDongshan || hasShoudao)) continue; // 对面还可能反制，先别点
+        if (/力拔山兮/.test(b.innerText) && (hasDongshan || hasShoudao)) continue;
+        if (window.AI_DEBUG) console.log('[AI] use skill:', b.innerText);
         b.click();
-        // 力拔会进入窗口，后续由 handleLibaCounter 接管
         return true;
       }
     }
     return false;
   }
 
-  // ====== 模拟点击棋盘（用实际渲染尺寸，手机不偏移） ======
+  // ====== 模拟点击棋盘（三重兜底） ======
   function simulateBoardClick(x, y) {
     const canvas = document.getElementById('board');
     if (!canvas) return;
@@ -216,7 +188,7 @@
       } catch (e) { /* 忽略 */ }
     }
 
-    // 保险 3：若页面暴露了 helper，就直接按网格坐标调用（见下面第②步）
+    // 保险 3：若页面暴露了 helper，就直接按网格坐标调用
     if (!ok && typeof window.__ai_grid_click === 'function') {
       window.__ai_grid_click(x, y);
       if (window.AI_DEBUG) console.log('[AI] __ai_grid_click used');
@@ -225,7 +197,7 @@
 
   // ====== 即胜/评估/候选 ======
   function findImmediateWin(bd, player) {
-    for (let y = 0; y < BOARD_SIZE; y++) for (let x = 0; x < BOARD_SIZE; x++) {
+    for (let y = 0; y < 15; y++) for (let x = 0; x < 15; x++) {
       if (bd[y][x] !== 0) continue;
       bd[y][x] = player;
       const win = checkWinAt(bd, x, y, player);
@@ -234,7 +206,6 @@
     }
     return null;
   }
-
   function checkWinAt(bd, x, y, p) {
     const dirs = [[1,0],[0,1],[1,1],[1,-1]];
     for (const [dx,dy] of dirs) {
@@ -247,25 +218,21 @@
   }
 
   function pickHeuristicMove(bd, me, opp) {
-    // 候选：距离任意已有棋 ≤2 的空位
     const candidates = new Set();
-    for (let y=0; y<BOARD_SIZE; y++) for (let x=0; x<BOARD_SIZE; x++) {
+    for (let y=0; y<15; y++) for (let x=0; x<15; x++) {
       if (bd[y][x] !== 0) continue;
       if (nearStone(bd, x, y, 2)) candidates.add(x+','+y);
     }
-    if (candidates.size === 0) candidates.add('7,7'); // 空盘兜底
+    if (candidates.size === 0) candidates.add('7,7');
 
     let best = null, bestScore = -1e9;
     for (const key of candidates) {
       const [xs,ys] = key.split(','); const x=+xs, y=+ys;
-
-      // 简单评估：自己分 - 对手分（落此点）
       const score = evalPoint(bd, x, y, me) - 0.8 * evalPoint(bd, x, y, opp);
       if (score > bestScore) { bestScore = score; best = {x,y}; }
     }
     return best || {x:7,y:7};
   }
-
   function nearStone(bd, x, y, dist) {
     for (let dy=-dist; dy<=dist; dy++) for (let dx=-dist; dx<=dist; dx++) {
       if (dx===0 && dy===0) continue;
@@ -274,31 +241,24 @@
     }
     return false;
   }
-
-  // 粗略打分：考虑四个方向的潜力（活四/冲四/活三/眠三/活二）
   function evalPoint(bd, x, y, p) {
     let sum = 0;
     const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-    for (const [dx,dy] of dirs) sum += lineScore(bd, x, y, dx, dy, p);
+    bd[y][x] = p;
+    for (const [dx,dy] of dirs) {
+      const cnt = countLine(bd, x, y, dx, dy, p);
+      const open = countOpenEnds(bd, x, y, dx, dy, p);
+      if (cnt >= 5) { sum += 1e6; continue; }
+      if (cnt === 4 && open >= 1) sum += 50000;
+      else if (cnt === 3 && open === 2) sum += 20000;
+      else if (cnt === 3 && open === 1) sum += 8000;
+      else if (cnt === 2 && open === 2) sum += 3000;
+      else if (cnt === 2 && open === 1) sum += 1000;
+      else sum += 100 + cnt*50 + open*30;
+    }
+    bd[y][x] = 0;
     return sum;
   }
-
-  function lineScore(bd, x, y, dx, dy, p) {
-    // 把落子临时放上去评估
-    bd[y][x] = p;
-    const count = countLine(bd, x, y, dx, dy, p);
-    const openEnds = countOpenEnds(bd, x, y, dx, dy, p);
-    bd[y][x] = 0;
-
-    if (count >= 5) return 1e6;
-    if (count === 4 && openEnds >= 1) return 50000; // 冲四/活四
-    if (count === 3 && openEnds === 2) return 20000; // 活三
-    if (count === 3 && openEnds === 1) return 8000;  // 眠三
-    if (count === 2 && openEnds === 2) return 3000;  // 活二
-    if (count === 2 && openEnds === 1) return 1000;  // 眠二
-    return 100 + count*50 + openEnds*30;
-  }
-
   function countLine(bd, x, y, dx, dy, p) {
     let cnt = 1;
     for (let d=1; d<5; d++) { const nx=x+dx*d, ny=y+dy*d; if (bd[ny]?.[nx]===p) cnt++; else break; }
@@ -307,10 +267,8 @@
   }
   function countOpenEnds(bd, x, y, dx, dy, p) {
     let open = 0;
-    let nx = x + dx, ny = y + dy;
-    if (bd[ny]?.[nx] === 0) open++;
-    nx = x - dx; ny = y - dy;
-    if (bd[ny]?.[nx] === 0) open++;
+    let nx = x + dx, ny = y + dy; if (bd[ny]?.[nx] === 0) open++;
+    nx = x - dx; ny = y - dy;      if (bd[ny]?.[nx] === 0) open++;
     return open;
   }
 })();
