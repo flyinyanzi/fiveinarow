@@ -209,6 +209,22 @@ function initBoard() {
 
     handleStartOfTurn();
   };
+
+  // 让 AI 可直接按“网格坐标”落子（终极兜底）：
+  window.__ai_grid_click = function(gridX, gridY) {
+    const canvas = document.getElementById('board');
+    if (!canvas || typeof canvas.onclick !== 'function') return;
+
+    const rect = canvas.getBoundingClientRect();
+    const cellX = rect.width  / 15;
+    const cellY = rect.height / 15;
+
+    const cx = rect.left + gridX * cellX + cellX / 2;
+    const cy = rect.top  + gridY * cellY + cellY / 2;
+
+    // 直接复用你现成的 onclick 内部逻辑
+    canvas.onclick({ clientX: cx, clientY: cy });
+  };
 }
 
 function drawPiece(x, y, player) {
