@@ -15,19 +15,20 @@
 
   // 哪个玩家是AI：仅在玩家 vs AI（pve）时启用玩家2为AI
   function getIsAI() {
-    let mode = (typeof window !== 'undifined' ? window.playmode : '') || '';
+    // 1) 先看全局（startGame 写入的）
+    let mode = (typeof window !== 'undefined' ? window.playMode : '') || '';
 
+    // 2) 兜底：还没写入全局时（或某些浏览器 timing 差异），直接读开始菜单单选框
     if (!mode) {
       const picked = document.querySelector('input[name="play-mode"]:checked');
-      if (picked && picked.value) mode = picked.value;    
+      if (picked && picked.value) mode = picked.value;
     }
 
-    mode = String(mode).trim().toLowerCase();
-    
+    mode = String(mode).trim().toLowerCase();  // 统一大小写与空格
     const pve = (mode === 'pve');
+
     return { 1: false, 2: !!pve };
   }
-
 
   function rand() { return Math.random(); }
 
