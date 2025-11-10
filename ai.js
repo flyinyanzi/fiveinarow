@@ -198,35 +198,28 @@
     const cx = rect.left + x * cellX + cellX / 2;
     const cy = rect.top  + y * cellY + cellY / 2;
 
-    // 调试：可选开关
-    if (window.AI_DEBUG) {
-      console.log('[AI] try click', {x,y,cx,cy});
-    }
+    if (window.AI_DEBUG) console.log('[AI] try click', {x,y,cx,cy});
 
-    // 保险 1：标准派发 MouseEvent（大多数浏览器 OK）
-    let dispatched = false;
+    // 保险 1：标准 MouseEvent
+    let ok = false;
     try {
-      const ev = new MouseEvent('click', {
-        view: window,
-        bubbles: true,
-        cancelable: true,
-        clientX: cx,
-        clientY: cy
-      });
-      dispatched = canvas.dispatchEvent(ev);
-    } catch (e) {
-      // 某些旧环境可能会报错，忽略，走保险2
-    }
+      const ev = new MouseEvent('click', { view: window, bubbles: true, cancelable: true, clientX: cx, clientY: cy });
+      ok = canvas.dispatchEvent(ev);
+    } catch (e) { /* 忽略 */ }
 
-    // 保险 2：直接调用绑定的 onclick 回调（Edge/某些环境对合成事件不友好时）
-    // main.js 里是 canvas.onclick = function(e){...}，这里直接以“伪事件对象”调用
-    if (!dispatched && typeof canvas.onclick === 'function') {
+    // 保险 2：直接调 onclick 回调
+    if (!ok && typeof canvas.onclick === 'function') {
       try {
         canvas.onclick({ clientX: cx, clientY: cy });
+        ok = true;
         if (window.AI_DEBUG) console.log('[AI] fallback onclick() invoked');
-      } catch (e) {
-        if (window.AI_DEBUG) console.warn('[AI] fallback onclick() failed', e);
-      }
+      } catch (e) { /* 忽略 */ }
+    }
+
+    // 保险 3：若页面暴露了 helper，就直接按网格坐标调用（见下面第②步）
+    if (!ok && typeof window.__ai_grid_click === 'function') {
+      window.__ai_grid_click(x, y);
+      if (window.AI_DEBUG) console.log('[AI] __ai_grid_click used');
     }
   }
 
