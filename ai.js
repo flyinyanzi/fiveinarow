@@ -189,6 +189,8 @@
   // ====== 模拟点击棋盘（用实际渲染尺寸，手机不偏移） ======
   function simulateBoardClick(x, y) {
     const canvas = document.getElementById('board');
+    if (!canvas) return;
+
     const rect = canvas.getBoundingClientRect();
     const cellX = rect.width  / BOARD_SIZE;
     const cellY = rect.height / BOARD_SIZE;
@@ -196,13 +198,36 @@
     const cx = rect.left + x * cellX + cellX / 2;
     const cy = rect.top  + y * cellY + cellY / 2;
 
-    canvas.dispatchEvent(new MouseEvent('click', {
-      view: window,
-      bubbles: true,
-      cancelable: true,
-      clientX: cx,
-      clientY: cy
-    }));
+    // 调试：可选开关
+    if (window.AI_DEBUG) {
+      console.log('[AI] try click', {x,y,cx,cy});
+    }
+
+    // 保险 1：标准派发 MouseEvent（大多数浏览器 OK）
+    let dispatched = false;
+    try {
+      const ev = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+        clientX: cx,
+        clientY: cy
+      });
+      dispatched = canvas.dispatchEvent(ev);
+    } catch (e) {
+      // 某些旧环境可能会报错，忽略，走保险2
+    }
+
+    // 保险 2：直接调用绑定的 onclick 回调（Edge/某些环境对合成事件不友好时）
+    // main.js 里是 canvas.onclick = function(e){...}，这里直接以“伪事件对象”调用
+    if (!dispatched && typeof canvas.onclick === 'function') {
+      try {
+        canvas.onclick({ clientX: cx, clientY: cy });
+        if (window.AI_DEBUG) console.log('[AI] fallback onclick() invoked');
+      } catch (e) {
+        if (window.AI_DEBUG) console.warn('[AI] fallback onclick() failed', e);
+      }
+    }
   }
 
   // ====== 即胜/评估/候选 ======
