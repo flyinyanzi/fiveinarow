@@ -271,4 +271,17 @@
     nx = x - dx; ny = y - dy;      if (bd[ny]?.[nx] === 0) open++;
     return open;
   }
+
+  // ===== DEBUG TRIGGER FOR EDGE/MOBILE =====
+window.addEventListener('DOMContentLoaded', () => {
+  console.log('[AI] ai.js loaded and ready. Mode =', window.playMode);
+  // 如果是 PVE 且轮到AI就立刻尝试一次
+  if (window.playMode === 'pve' && window.__ai_nudge) {
+    setTimeout(() => {
+      console.log('[AI] Initial nudge on DOM ready');
+      window.__ai_nudge();
+    }, 800);
+  }
+});
+
 })();
