@@ -28,7 +28,11 @@
 
   // ====== 轮询主循环（非侵入式） ======
   function tick() {
-    if (!window.gameState || !document.getElementById('board')) return;
+    // 这里改掉了 window.gameState 的判断
+    if (typeof gameState === 'undefined' || !document.getElementById('board')) {
+      if (window.AI_DEBUG) console.log('[AI] tick: no gameState or board');
+      return;
+    }
 
     const isAI = getIsAI();
     const who = gameState.currentPlayer;
@@ -273,15 +277,15 @@
   }
 
   // ===== DEBUG TRIGGER FOR EDGE/MOBILE =====
-window.addEventListener('DOMContentLoaded', () => {
-  console.log('[AI] ai.js loaded and ready. Mode =', window.playMode);
-  // 如果是 PVE 且轮到AI就立刻尝试一次
-  if (window.playMode === 'pve' && window.__ai_nudge) {
-    setTimeout(() => {
-      console.log('[AI] Initial nudge on DOM ready');
-      window.__ai_nudge();
-    }, 800);
-  }
-});
+  window.addEventListener('DOMContentLoaded', () => {
+    console.log('[AI] ai.js loaded and ready. Mode =', window.playMode);
+    // 如果是 PVE 且轮到AI就立刻尝试一次
+    if (window.playMode === 'pve' && window.__ai_nudge) {
+      setTimeout(() => {
+        console.log('[AI] Initial nudge on DOM ready');
+        window.__ai_nudge();
+      }, 800);
+    }
+  });
 
 })();
