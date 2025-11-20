@@ -109,6 +109,11 @@ const skills = [
       gameState.showDialogForPlayer(caster, "调虎离山发动！拿走你的棋子和尊严！");
       setTimeout(() => { gameState.showDialogForPlayer(target, "啊？！我的棋子呢？！？"); }, 700);
 
+      // 标记“刚刚用过调虎离山”，让 AI 在一段时间内别急着落子
+      if (typeof window !== 'undefined') {
+        window.__lastTiaohuTime = Date.now();
+      }
+
       // 记录一次（每人一次）
       const tiao = skills.find(s => s.id === 'tiaohulishan');
       tiao.usedBy = tiao.usedBy || [];
