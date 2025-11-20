@@ -12,6 +12,9 @@
 
   const BOARD_SIZE = 15;
 
+  // AI 是否正在执行一个动作序列（防止 tick 重入）
+  let aiBusy = false;
+
   // 哪个玩家是AI：仅在玩家 vs AI（pve）时启用玩家2为AI（全局优先，DOM 兜底）
   function getIsAI() {
     let mode = (typeof window !== 'undefined' ? window.playMode : '') || '';
@@ -28,7 +31,6 @@
 
   // ====== 轮询主循环（非侵入式） ======
   function tick() {
-    // 这里改掉了 window.gameState 的判断
     if (typeof gameState === 'undefined' || !document.getElementById('board')) {
       if (window.AI_DEBUG) console.log('[AI] tick: no gameState or board');
       return;
@@ -37,8 +39,15 @@
     const isAI = getIsAI();
     const who = gameState.currentPlayer;
 
+    // 当前不是 AI 的回合
     if (!isAI[who]) return;
     if (window.gameOver) return;
+
+    // 如果 AI 正在执行一个回合中的动作（比如刚点了技能，等落子），先不再插手
+    if (aiBusy) {
+      if (window.AI_DEBUG) console.log('[AI] tick skipped: busy');
+      return;
+    }
 
     // 有任何技能窗口/输入 → 交由专门反应逻辑或等待
     if (gameState.apocWindow) { handleLibaCounter(who); return; }
@@ -122,24 +131,84 @@
     return false;
   }
 
-  // ====== AI 正常回合 ======
+  // ====== AI 正常回合（改成“动作队列”+ 延迟） ======
   function aiTurn(aiId) {
-    const me = aiId, opp = 3 - aiId;
+    const me  = aiId;
+    const opp = 3 - aiId;
     const board = gameState.board;
 
+    const actions = []; // [{type:'skill', button, label}, {type:'move', x,y}]
+
     const winMove = findImmediateWin(board, me);
-    if (winMove && rand() > CFG.mustWinMiss) { simulateBoardClick(winMove.x, winMove.y); return; }
+    if (winMove && rand() > CFG.mustWinMiss) {
+      // 能直接赢：只下这一步，不用技能
+      actions.push({ type: 'move', x: winMove.x, y: winMove.y });
+      return runActions(actions);
+    }
 
     const oppWin = findImmediateWin(board, opp);
-    if (oppWin && rand() <= CFG.mustBlockProb) { simulateBoardClick(oppWin.x, oppWin.y); return; }
+    if (oppWin && rand() <= CFG.mustBlockProb) {
+      // 必须防守：只挡住对方
+      actions.push({ type: 'move', x: oppWin.x, y: oppWin.y });
+      return runActions(actions);
+    }
 
-    if (rand() <= CFG.activeSkill) { if (tryBestSkill(me)) return; }
+    // 若不在立刻赢/立刻防守的状态，才考虑技能
+    if (rand() <= CFG.activeSkill) {
+      tryBestSkill(me, actions);
+    }
 
+    // 再决定落子点（无论是否刚刚加入了一个技能动作）
     const best = pickHeuristicMove(board, me, opp);
-    simulateBoardClick(best.x, best.y);
+    actions.push({ type: 'move', x: best.x, y: best.y });
+
+    runActions(actions);
   }
 
-  function tryBestSkill(me) {
+  // 顺序执行一个回合中的动作：技能 → 落子，中间加入延迟
+  function runActions(actions) {
+    if (!actions.length) return;
+
+    aiBusy = true;
+
+    const SKILL_DELAY_MS = 500;  // 技能前摇
+    const MOVE_DELAY_MS  = 700;  // 落子前摇
+
+    function next() {
+      if (!actions.length) {
+        aiBusy = false;
+        return;
+      }
+      const act = actions.shift();
+      if (act.type === 'skill') {
+        setTimeout(() => {
+          if (window.gameOver) { aiBusy = false; return; }
+          if (window.AI_DEBUG) console.log('[AI] delayed skill:', act.label);
+          // button 可能在这段时间里被禁用/消失，所以要再检查一下
+          if (act.button && !act.button.disabled && document.body.contains(act.button)) {
+            act.button.click();
+          }
+          next();
+        }, SKILL_DELAY_MS);
+      } else if (act.type === 'move') {
+        setTimeout(() => {
+          if (window.gameOver) { aiBusy = false; return; }
+          if (window.AI_DEBUG) console.log('[AI] delayed move:', act.x, act.y);
+          simulateBoardClick(act.x, act.y);
+          // 这里直接结束本回合
+          aiBusy = false;
+        }, MOVE_DELAY_MS);
+      } else {
+        // 未知动作，忽略
+        next();
+      }
+    }
+
+    next();
+  }
+
+  // 选择技能：不再立即点击，而是把“点击技能按钮”塞进 actions
+  function tryBestSkill(me, actions) {
     const area = document.getElementById(`player${me}-skill-area`);
     if (!area) return false;
     const btns = Array.from(area.querySelectorAll('button')).filter(b => !b.disabled);
@@ -148,18 +217,51 @@
     const hasDongshan = !gameState.dongshanUsed[3 - me];
     const hasShoudao  = !gameState.shoudaoUsed[3 - me];
 
-    const order = [/静如止水/, /飞沙走石/, /梅开二度/, /力拔山兮/];
+    // 当前总步数，用来避免“第一回合就静如止水”
+    const totalMoves = (gameState.moveHistory && gameState.moveHistory.length) || 0;
+
+    // 基础的技能优先级
+    let order = [
+      /静如止水/,
+      /飞沙走石/,
+      /梅开二度/,
+      /力拔山兮/
+    ];
+
+    // 简单洗牌，让套路不要完全固定
+    order = shuffleArray(order);
 
     for (const regex of order) {
       for (const b of btns) {
         if (!regex.test(b.innerText)) continue;
+
+        // ① 力拔山兮：如果对方还有东山/手刀，就尽量少用（和你之前设定一致）
         if (/力拔山兮/.test(b.innerText) && (hasDongshan || hasShoudao)) continue;
-        if (window.AI_DEBUG) console.log('[AI] use skill:', b.innerText);
-        b.click();
+
+        // ② 静如止水：避免开局就给人来一发（比如至少等双方各下 1 子以后）
+        if (/静如止水/.test(b.innerText) && totalMoves < 4) continue;
+
+        if (window.AI_DEBUG) console.log('[AI] plan skill:', b.innerText);
+
+        actions.push({
+          type: 'skill',
+          button: b,
+          label: b.innerText
+        });
         return true;
       }
     }
     return false;
+  }
+
+  // 简单洗牌函数
+  function shuffleArray(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+    }
+    return a;
   }
 
   // ====== 模拟点击棋盘（三重兜底） ======
