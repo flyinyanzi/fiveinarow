@@ -290,7 +290,24 @@ function countPiecesOf(playerId){
   for (let y=0;y<15;y++) for (let x=0;x<15;x++) if (board[y][x]===playerId) cnt++;
   return cnt;
 }
-function hasEnemyPieceFor(playerId){ return countPiecesOf(3 - playerId) > 0; }
+
+// 检查“对于 playerId 来说，棋盘上是否存在任何一颗敌方棋”
+// 敌方 = 3 - playerId
+function hasEnemyPieceFor(playerId) {
+  const enemy = 3 - playerId;
+  const bd = gameState.board;   // 这里用 gameState.board，确保是最新盘面
+
+  if (!bd) return false;
+
+  for (let y = 0; y < 15; y++) {
+    for (let x = 0; x < 15; x++) {
+      if (bd[y][x] === enemy) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 // —— 梅开二度：准备阶段 + 擒拿窗口 —— 
 function startPreparedSkill(playerId, skillId) {
