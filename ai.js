@@ -36,6 +36,19 @@
       return;
     }
 
+    // 调虎离山后的“观战时间”： 1200ms 内 AI 不落子
+    if (window.__lastTiaohuTime) {
+      const WAIT_MS = 1200;  // 想更慢可以改成 1500、1800
+      const dt = Date.now() - window.__lastTiaohuTime;
+      if (dt < WAIT_MS) {
+        if (window.AI_DEBUG) console.log('[AI] wait after tiaohu, dt=', dt);
+        return;  // 先让人好好看完“调虎离山”的效果
+      } else {
+        // 超过等待时间，就清掉标记
+        window.__lastTiaohuTime = null;
+      }
+    }
+
     const isAI = getIsAI();
     const who = gameState.currentPlayer;
 
