@@ -5,6 +5,7 @@ let skillMode = "free";    // 先做“自由选卡”模式
 let currentPlayer = 1;
 let board;
 let gameOver = false;
+window.gameOver = false;
 
 // —— UI helpers ——
 function showDialogForPlayer(playerId, text) {
@@ -88,6 +89,7 @@ function startGame() {
   gameState.moveHistory = [];
 
   gameOver = false;
+  window.gameOver = false;
 
   // 清空技能/窗口等状态
   gameState.skipNextTurnFor = null;
@@ -194,6 +196,7 @@ function initBoard() {
     if (checkWinFixed(x, y, currentPlayer)) {
       showDialogForPlayer(currentPlayer, `🎉 玩家${currentPlayer}获胜！`);
       gameOver = true;
+      window.gameOver = true;
       return;
     }
 
@@ -643,6 +646,7 @@ function resolveLibashanxiSuccess(attackerId) {
   showDialogForPlayer(attackerId, "力拔山兮成功！棋盘炸裂——我赢了！");
   showDialogForPlayer(3 - attackerId, "（没来得及反应……）");
   gameOver = true;
+  window.gameOver = true;
 }
 
 // 两极反转：在力拔选择窗口中（当东山/手刀都已用）给防守方3秒按钮
@@ -670,11 +674,11 @@ function triggerLiangji(defenderId) {
   const p2win = checkAnyWin(2);
   if (p1win && !p2win) {
     showDialogForPlayer(1, "（两极反转后）我这边五连了！");
-    gameOver = true; return;
+    gameOver = true; window.gameOver = true; return;
   }
   if (p2win && !p1win) {
     showDialogForPlayer(2, "（两极反转后）我这边五连了！");
-    gameOver = true; return;
+    gameOver = true; window.gameOver = true; return;
   }
 
   showDialogForPlayer(defenderId, "揭开你的黑历史，改变你的战斗力！");
