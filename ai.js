@@ -156,7 +156,7 @@
     return false;
   }
 
-  // ====== AI 正常回合（改成“动作队列”+ 延迟） ======
+  // ====== AI 正常回合（改成“防守优先 + 威胁识别 + 动作队列”） ======
   function aiTurn(aiId) {
     const me  = aiId;
     const opp = 3 - aiId;
@@ -164,30 +164,128 @@
 
     const actions = []; // [{type:'skill', button, label}, {type:'move', x,y}]
 
+    // 0. 我方即胜 —— 能赢先赢
     const winMove = findImmediateWin(board, me);
     if (winMove && rand() > CFG.mustWinMiss) {
-      // 能直接赢：只下这一步，不用技能
       actions.push({ type: 'move', x: winMove.x, y: winMove.y });
       return runActions(actions);
     }
 
+    // 1. 对方是否有“立即获胜点”（活四/冲四）？
     const oppWin = findImmediateWin(board, opp);
-    if (oppWin && rand() <= CFG.mustBlockProb) {
-      // 必须防守：只挡住对方
+    if (oppWin) {
+      // 尝试用技能来防守（飞沙走石 / 静如止水）：
+      const defenseSkillPlanned = planDefenseSkill(me, opp, board, actions);
+      if (defenseSkillPlanned) {
+        return runActions(actions); // 本回合用技能防守
+      }
+
+      // 如果没用/没选中技能，就用落子堵掉必胜点
       actions.push({ type: 'move', x: oppWin.x, y: oppWin.y });
       return runActions(actions);
     }
 
-    // 若不在立刻赢/立刻防守的状态，才考虑技能
-    if (rand() <= CFG.activeSkill) {
-      tryBestSkill(me, actions);
+    // 2. 没有立刻生死局，看看对方最近一步是不是“威胁很大”
+    const lastOpp = gameState.lastMoveBy[opp];
+    if (lastOpp) {
+      // 评估对方刚刚那一步在他视角下有多强
+      const theirGain = evalPoint(board, lastOpp.x, lastOpp.y, opp);
+      const ourGain   = evalPoint(board, lastOpp.x, lastOpp.y, me);
+      const dangerScore = theirGain - ourGain;
+
+      // dangerScore 越大，说明这是对方构建强势形状的一手
+      // 给一个简单阈值：例如 > 15000 认为是大威胁（比如靠近活三/冲四）
+      const DANGER_THRESHOLD = 15000;
+
+      if (dangerScore > DANGER_THRESHOLD) {
+        // 尝试“防守型飞沙走石”：专门拆对方刚刚那一步
+        if (planFeishaAsDefense(me, lastOpp, actions)) {
+          return runActions(actions);
+        }
+      }
     }
 
-    // 再决定落子点（无论是否刚刚加入了一个技能动作）
+    // 3. 没有即胜/即输局 —— 决定是否主动使用技能
+    if (rand() <= CFG.activeSkill) {
+      // 在当前局面下，选择一个“相对合适”的主动技能（不只是固定顺序）
+      const used = tryBestSkill(me, actions);
+      if (used) {
+        // 技能用了，再补一个下棋动作
+        const bestAfterSkill = pickHeuristicMove(board, me, opp);
+        actions.push({ type: 'move', x: bestAfterSkill.x, y: bestAfterSkill.y });
+        return runActions(actions);
+      }
+    }
+
+    // 4. 普通落子：按启发式评分选一点
     const best = pickHeuristicMove(board, me, opp);
     actions.push({ type: 'move', x: best.x, y: best.y });
-
     runActions(actions);
+  }
+
+  // 在“对方有立刻必胜点”的情况下，用技能当防守手段
+  function planDefenseSkill(me, opp, board, actions) {
+    const area = document.getElementById(`player${me}-skill-area`);
+    if (!area) return false;
+
+    const btns = Array.from(area.querySelectorAll('button')).filter(b => !b.disabled);
+    if (!btns.length) return false;
+
+    const lastOpp = gameState.lastMoveBy[opp];
+
+    let feishaBtn = null;
+    let jingruBtn = null;
+
+    for (const b of btns) {
+      if (/飞沙走石/.test(b.innerText)) feishaBtn = b;
+      if (/静如止水/.test(b.innerText)) jingruBtn = b;
+    }
+
+    // 使用技能防守的概率：沿用 mustBlockProb（难度越高，越倾向于用）
+    const useSkillProb = CFG.mustBlockProb;
+
+    // 优先考虑飞沙走石：如果能飞走对方刚刚那颗构成威胁的棋子
+    if (feishaBtn && lastOpp && board[lastOpp.y]?.[lastOpp.x] === opp) {
+      if (rand() <= useSkillProb) {
+        actions.push({ type: 'skill', button: feishaBtn, label: feishaBtn.innerText });
+        return true;
+      }
+    }
+
+    // 再考虑静如止水：冻结对方一轮
+    if (jingruBtn) {
+      if (rand() <= useSkillProb) {
+        actions.push({ type: 'skill', button: jingruBtn, label: jingruBtn.innerText });
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // 在“虽然还不是即死，但对方刚刚这一手威胁很大”时，用飞沙走石拆形
+  function planFeishaAsDefense(me, lastOpp, actions) {
+    const area = document.getElementById(`player${me}-skill-area`);
+    if (!area) return false;
+
+    const btns = Array.from(area.querySelectorAll('button')).filter(b => !b.disabled);
+    if (!btns.length) return false;
+
+    let feishaBtn = null;
+    for (const b of btns) {
+      if (/飞沙走石/.test(b.innerText)) { feishaBtn = b; break; }
+    }
+    if (!feishaBtn) return false;
+
+    // 给“防守性飞沙走石”一点概率（不必 100%，否则太机械）
+    const DEF_FEISHA_PROB = CFG.activeSkill; // 难度越高，使用率越高
+
+    if (rand() <= DEF_FEISHA_PROB) {
+      actions.push({ type: 'skill', button: feishaBtn, label: feishaBtn.innerText });
+      return true;
+    }
+
+    return false;
   }
 
   // 顺序执行一个回合中的动作：技能 → 落子，中间加入延迟
