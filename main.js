@@ -78,8 +78,8 @@ function startGame() {
   if (container) container.style.display = "flex";
 
   // —— 棋面与状态初始化 —— //
-  board = Array.from({ length: 15 }, () => Array(15).fill(0));
-  gameState.board = board;
+  gameState.board = Array.from({ length: 15 }, () => Array(15).fill(0));
+  board = gameState.board;
 
   currentPlayer = 1;
   gameState.currentPlayer = 1;
@@ -749,12 +749,13 @@ function renderSkillPool(playerId) {
       btn.innerText = skill.name;
       btn.title = '擒拿后可发动调虎离山（3秒内）';
       btn.onclick = () => {
-        // 一锤子买卖：立刻锁死并隐藏，杜绝连点
+        // 立刻锁死并隐藏，杜绝连点
         btn.disabled = true;
         btn.onclick = null;
         btn.classList.add('skill-disabled');
         markSkillVisibleFor('tiaohulishan', playerId, false);
 
+        currentPlayer = playerId;
         gameState.currentPlayer = playerId;
         skill.effect(gameState);
       };
@@ -770,7 +771,7 @@ function renderSkillPool(playerId) {
       btn.className = 'skill-button';
       btn.innerText = skill.name;  // “捡起棋盘”
       btn.title = '3秒内可点 → 进入10秒口令：输入“东山再起”并发送';
-      btn.onclick = () => { gameState.currentPlayer = playerId; openApocPrompt(playerId, 'dongshanzaiqi'); };
+      btn.onclick = () => { currentPlayer = playerId; gameState.currentPlayer = playerId; openApocPrompt(playerId, 'dongshanzaiqi'); };
       area.appendChild(btn);
       return;
     }
@@ -781,7 +782,7 @@ function renderSkillPool(playerId) {
       btn.className = 'skill-button';
       btn.innerText = skill.name;
       btn.title = '3秒内可点 → 进入10秒口令：输入“see you again”并发送';
-      btn.onclick = () => { gameState.currentPlayer = playerId; openApocPrompt(playerId, 'shou_dao'); };
+      btn.onclick = () => { currentPlayer = playerId; gameState.currentPlayer = playerId; openApocPrompt(playerId, 'shou_dao'); };
       area.appendChild(btn);
       return;
     }
