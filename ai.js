@@ -71,12 +71,24 @@
     const r = gameState.reactionWindow;
     if (!r) return;
 
+    // 给反应技加一点“人类延迟”，但不能太长（3 秒窗口内）
+    const REACT_DELAY_MS = 300;
+
     if (r.forSkillId === 'meikaierdhu' && r.defenderId === aiId) {
-      if (rand() <= CFG.qinna) clickButtonInArea(aiId, b => /擒拿/.test(b.innerText));
+      if (rand() <= CFG.qinna) {
+        setTimeout(() => {
+          clickButtonInArea(aiId, b => /擒拿/.test(b.innerText));
+        }, REACT_DELAY_MS);
+      }
       return;
     }
+
     if (r.forSkillId === 'tiaohulishan' && r.defenderId === aiId) {
-      if (rand() <= CFG.tiaohu) clickButtonInArea(aiId, b => /调虎离山/.test(b.innerText));
+      if (rand() <= CFG.tiaohu) {
+        setTimeout(() => {
+          clickButtonInArea(aiId, b => /调虎离山/.test(b.innerText));
+        }, REACT_DELAY_MS);
+      }
       return;
     }
   }
@@ -171,8 +183,8 @@
 
     aiBusy = true;
 
-    const SKILL_DELAY_MS = 500;  // 技能前摇
-    const MOVE_DELAY_MS  = 700;  // 落子前摇
+    const SKILL_DELAY_MS = 700;  // 技能前摇
+    const MOVE_DELAY_MS  = 900;  // 落子前摇
 
     function next() {
       if (!actions.length) {
