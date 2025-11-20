@@ -330,51 +330,107 @@
     next();
   }
 
-  // 选择技能：不再立即点击，而是把“点击技能按钮”塞进 actions
+  // 选择主动技能：考虑局面 + 随机权重，不再死板
   function tryBestSkill(me, actions) {
     const area = document.getElementById(`player${me}-skill-area`);
     if (!area) return false;
-    const btns = Array.from(area.querySelectorAll('button')).filter(b => !b.disabled);
-    if (!btns.length) return false;
+    const btnsAll = Array.from(area.querySelectorAll('button')).filter(b => !b.disabled);
+    if (!btnsAll.length) return false;
+
+    // 当前总步数：用来避免“开局就静如止水”
+    const totalMoves = (gameState.moveHistory && gameState.moveHistory.length) || 0;
+
+    // 判断我是否大致“领先”：用一个很简单的分数差
+    let myScoreSum = 0;
+    let oppScoreSum = 0;
+    const opp = 3 - me;
+    const bd = gameState.board;
+
+    for (let y = 0; y < 15; y++) {
+      for (let x = 0; x < 15; x++) {
+        if (bd[y][x] === me)  myScoreSum += evalPoint(bd, x, y, me);
+        if (bd[y][x] === opp) oppScoreSum += evalPoint(bd, x, y, opp);
+      }
+    }
+
+    const leadScore = myScoreSum - oppScoreSum; // >0 表示我整体占优
 
     const hasDongshan = !gameState.dongshanUsed[3 - me];
     const hasShoudao  = !gameState.shoudaoUsed[3 - me];
 
-    // 当前总步数，用来避免“第一回合就静如止水”
-    const totalMoves = (gameState.moveHistory && gameState.moveHistory.length) || 0;
+    // 为每种技能设定一个基础权重
+    const skillCandidates = [];
 
-    // 基础的技能优先级
-    let order = [
-      /静如止水/,
-      /飞沙走石/,
-      /梅开二度/,
-      /力拔山兮/
-    ];
+    for (const b of btnsAll) {
+      const label = b.innerText;
 
-    // 简单洗牌，让套路不要完全固定
-    order = shuffleArray(order);
-
-    for (const regex of order) {
-      for (const b of btns) {
-        if (!regex.test(b.innerText)) continue;
-
-        // ① 力拔山兮：如果对方还有东山/手刀，就尽量少用（和你之前设定一致）
-        if (/力拔山兮/.test(b.innerText) && (hasDongshan || hasShoudao)) continue;
-
-        // ② 静如止水：避免开局就给人来一发（比如至少等双方各下 1 子以后）
-        if (/静如止水/.test(b.innerText) && totalMoves < 4) continue;
-
-        if (window.AI_DEBUG) console.log('[AI] plan skill:', b.innerText);
-
-        actions.push({
-          type: 'skill',
-          button: b,
-          label: b.innerText
-        });
-        return true;
+      // 力拔山兮：如果对方还有东山/手刀，就尽量少用（除非后期 desperate）
+      if (/力拔山兮/.test(label)) {
+        if (hasDongshan || hasShoudao) {
+          // 对方还有反制，不太想主动用
+          continue;
+        }
+        // 根据局面弱势程度调整权重：越劣势越想用
+        let w = 5;
+        if (leadScore < 0) w += 10;
+        if (leadScore < -50000) w += 20;
+        skillCandidates.push({ button: b, label, weight: w });
+        continue;
       }
+
+      // 静如止水：避免开局就用，更适合在我略微领先时加强节奏
+      if (/静如止水/.test(label)) {
+        if (totalMoves < 4) continue; // 前几手不考虑
+        let w = 10;
+        if (leadScore > 0)  w += 10;  // 我领先时更倾向用
+        if (leadScore > 50000) w += 10;
+        skillCandidates.push({ button: b, label, weight: w });
+        continue;
+      }
+
+      // 飞沙走石：平时也可以用来骚扰对方形状
+      if (/飞沙走石/.test(label)) {
+        let w = 12;
+        // 如果我落后不少，更希望借它打乱局面
+        if (leadScore < 0) w += 5;
+        if (leadScore < -50000) w += 10;
+        skillCandidates.push({ button: b, label, weight: w });
+        continue;
+      }
+
+      // 梅开二度：一般在飞沙用过后才更有趣（但我们这里不强制）
+      if (/梅开二度/.test(label)) {
+        let w = 8;
+        // 适度增加随机性
+        if (leadScore > 0) w += 3;
+        skillCandidates.push({ button: b, label, weight: w });
+        continue;
+      }
+
+      // 其它技能（若有）：给一个基础权重
+      skillCandidates.push({ button: b, label, weight: 5 });
     }
-    return false;
+
+    if (!skillCandidates.length) return false;
+
+    // 按权重随机选择一个技能
+    const totalW = skillCandidates.reduce((s, c) => s + c.weight, 0);
+    let r = Math.random() * totalW;
+    let chosen = skillCandidates[0];
+
+    for (const c of skillCandidates) {
+      if (r < c.weight) { chosen = c; break; }
+      r -= c.weight;
+    }
+
+    if (window.AI_DEBUG) console.log('[AI] plan active skill:', chosen.label);
+    actions.push({
+      type: 'skill',
+      button: chosen.button,
+      label: chosen.label
+    });
+
+    return true;
   }
 
   // 简单洗牌函数
