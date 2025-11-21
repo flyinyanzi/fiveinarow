@@ -2,6 +2,8 @@
 
 let playMode = "pvp";      // 当前项目先做本地双人对战
 let skillMode = "free";    // 先做“自由选卡”模式
+let gameMode = "normal";   // 'normal' | 'relax' 对战 / 解压
+
 let currentPlayer = 1;
 let board;
 let gameOver = false;
@@ -14,7 +16,9 @@ function showDialogForPlayer(playerId, text) {
 }
 function updateTurnIndicator() {
   const el = document.getElementById("turn-indicator");
-  if (el) el.innerText = `轮到玩家 ${currentPlayer}`;
+  if (!el) return;
+  const modeLabel = (gameMode === 'relax') ? '（解压）' : '（对战）';
+  el.innerText = `轮到玩家 ${currentPlayer} ${modeLabel}`;
 }
 function clearDialogs() {
   showDialogForPlayer(1, "");
@@ -98,6 +102,10 @@ function startGame() {
   playMode  = (playModeInput ? playModeInput.value : 'pvp').toLowerCase();   // 'pvp' | 'pve'
   skillMode = (skillModeInput ? skillModeInput.value : 'free');              // 目前我们用自由选
   const aiDiff = (diffSel ? diffSel.value : 'NORMAL').toUpperCase();         // 'EASY'|'NORMAL'|'HARD'
+
+  // —— 新增：读取“游戏模式”（对战 / 解压） —— 
+  const gmInput = document.querySelector('input[name="game-mode"]:checked');
+  gameMode = gmInput ? gmInput.value : 'normal';   // 'normal' | 'relax'
 
   // —— 写入全局，供 ai.js 轮询使用 —— 
   window.playMode = playMode;
@@ -996,4 +1004,28 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // —— 新增：只有“玩家 vs AI”时启用难度选择 —— 
+  const diffSel   = document.getElementById('ai-difficulty');
+  const diffHint  = document.getElementById('ai-diff-hint');
+  const playModeRadios = document.querySelectorAll('input[name="play-mode"]');
+
+  function updateDiffState() {
+    const checked = document.querySelector('input[name="play-mode"]:checked');
+    const val = checked ? checked.value : 'pvp';
+    const isPve = (val === 'pve');
+
+    if (diffSel) {
+      diffSel.disabled = !isPve;
+      diffSel.style.opacity = isPve ? '1' : '0.6';
+    }
+    if (diffHint) {
+      diffHint.style.opacity = isPve ? '0.9' : '0.4';
+    }
+  }
+
+  if (playModeRadios && playModeRadios.length) {
+    playModeRadios.forEach(r => r.addEventListener('change', updateDiffState));
+  }
+  updateDiffState();
 });
