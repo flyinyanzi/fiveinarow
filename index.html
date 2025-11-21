@@ -31,6 +31,10 @@
       padding: 10px 14px; font-size: 14px; border-radius:10px; border:1px solid #bbb;
       background:#fff; color:#222; cursor:pointer;
     }
+    /* 通用隐藏：用于开始菜单的开关 */
+    .hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
@@ -78,12 +82,12 @@
       <div class="dialog" id="dialog-player2"></div>
       <div id="player2-skill-area" class="skill-area"></div>
     </div>
+  </div>
 
-    <!-- 控制按钮区域 -->
-    <div id="control-bar" style="margin-top: 8px; text-align: center;">
-      <button id="btn-restart">再来一局</button>
-      <button id="btn-back-home" style="margin-left: 12px;">返回首页</button>
-    </div>
+  <!-- 控制按钮区域：单独占一行，避免压缩棋盘 -->
+  <div id="control-bar" style="margin-top: 8px; text-align: center;">
+    <button id="btn-restart">再来一局</button>
+    <button id="btn-back-home" style="margin-left: 12px;">返回首页</button>
   </div>
 
   <!-- 脚本顺序保持不变；已添加 ai.js，在 main.js 之后再引入 -->
