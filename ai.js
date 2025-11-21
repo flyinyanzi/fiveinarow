@@ -14,6 +14,8 @@
 
   // AI 是否正在执行一个动作序列（防止 tick 重入）
   let aiBusy = false;
+  // 梅开二度连续使用计数（连续超过 3 次就暂时不用）
+  let meikaiChainCount = 0;
 
   // 哪个玩家是AI：仅在玩家 vs AI（pve）时启用玩家2为AI（全局优先，DOM 兜底）
   function getIsAI() {
@@ -35,26 +37,50 @@
       if (window.AI_DEBUG) console.log('[AI] tick: no gameState or board');
       return;
     }
+    if (window.gameOver) return;
 
-    // 调虎离山后的“观战时间”： 1200ms 内 AI 不落子
-    if (window.__lastTiaohuTime) {
-      const WAIT_MS = 1200;  // 想更慢可以改成 1500、1800
-      const dt = Date.now() - window.__lastTiaohuTime;
-      if (dt < WAIT_MS) {
-        if (window.AI_DEBUG) console.log('[AI] wait after tiaohu, dt=', dt);
-        return;  // 先让人好好看完“调虎离山”的效果
-      } else {
-        // 超过等待时间，就清掉标记
-        window.__lastTiaohuTime = null;
+    const isAI = getIsAI();
+
+    // —— 先处理“反制窗口”：不管 currentPlayer 是谁，只看 defender 是不是 AI —— //
+
+    // 梅开二度 / 调虎离山 的 3 秒反应窗口
+    if (gameState.reactionWindow) {
+      const d = gameState.reactionWindow.defenderId;   // 该反应的一方
+      if (isAI[d]) {
+        if (window.AI_DEBUG) console.log('[AI] handle reactionWindow for player', d);
+        handleQinnaTiaohu(d);   // 里面会按 qinna / tiaohu 概率决定要不要点
+        return;                  // 这一帧只做反制相关动作
       }
     }
 
-    const isAI = getIsAI();
+    // 力拔山兮的 3 秒反制窗口（东山 / 手刀 / 两极反转）
+    if (gameState.apocWindow) {
+      const d = gameState.apocWindow.defenderId;
+      if (isAI[d]) {
+        if (window.AI_DEBUG) console.log('[AI] handle apocWindow for player', d);
+        handleLibaCounter(d);   // 按 libaCounterOH / libaCounterLJ 概率决定
+        return;
+      }
+    }
+
+    // —— 没有任何反制窗口需要 AI 处理，才进入“正常轮到谁下棋” —— //
+
     const who = gameState.currentPlayer;
 
-    // 当前不是 AI 的回合
+    // 当前不是 AI 的回合，什么都不做
     if (!isAI[who]) return;
-    if (window.gameOver) return;
+
+    // 调虎离山后的“观战时间”： 1200ms 内 AI 不落子
+    if (window.__lastTiaohuTime) {
+      const WAIT_MS = 1200;
+      const dt = Date.now() - window.__lastTiaohuTime;
+      if (dt < WAIT_MS) {
+        if (window.AI_DEBUG) console.log('[AI] wait after tiaohu, dt=', dt);
+        return;
+      } else {
+        window.__lastTiaohuTime = null;
+      }
+    }
 
     // 如果 AI 正在执行一个回合中的动作（比如刚点了技能，等落子），先不再插手
     if (aiBusy) {
@@ -62,10 +88,8 @@
       return;
     }
 
-    // 有任何技能窗口/输入 → 交由专门反应逻辑或等待
-    if (gameState.apocWindow) { handleLibaCounter(who); return; }
-    if (gameState.reactionWindow) { handleQinnaTiaohu(who); return; }
-    if (gameState.preparedSkill || gameState.apocPrompt) return; // 等待结算/输入
+    // 有准备技能/口令输入，但此时 defender 不是 AI 或者窗口刚处理过，这里就只等待，不主动下棋
+    if (gameState.preparedSkill || gameState.apocPrompt) return;
 
     if (window.AI_DEBUG) console.log('[AI] tick turn', who);
     aiTurn(who);
@@ -164,28 +188,46 @@
 
     const actions = []; // [{type:'skill', button, label}, {type:'move', x,y}]
 
+    // 1. 先看自己有没有必胜点
     const winMove = findImmediateWin(board, me);
     if (winMove && rand() > CFG.mustWinMiss) {
       // 能直接赢：只下这一步，不用技能
       actions.push({ type: 'move', x: winMove.x, y: winMove.y });
+      // 本回合没用梅开，连击计数清零
+      meikaiChainCount = 0;
       return runActions(actions);
     }
 
+    // 2. 再看对手有没有必胜点（防守逻辑）
     const oppWin = findImmediateWin(board, opp);
     if (oppWin && rand() <= CFG.mustBlockProb) {
-      // 必须防守：只挡住对方
+      // 先按优先级尝试用技能防守，再补一手落子封点
+      planDefenseWithSkills(me, opp, oppWin, actions);
       actions.push({ type: 'move', x: oppWin.x, y: oppWin.y });
+
+      // 统计梅开连击（只看本回合是否计划使用梅开）
+      const usedMeikaiThisTurn = actions.some(a => a.type === 'skill' && a.label && /梅开二度/.test(a.label));
+      meikaiChainCount = usedMeikaiThisTurn ? (meikaiChainCount + 1) : 0;
+
       return runActions(actions);
     }
 
-    // 若不在立刻赢/立刻防守的状态，才考虑技能
+    // 3. 普通局面：先按概率考虑主动用技能，再正常落子
+    let usedSkillId = null;
     if (rand() <= CFG.activeSkill) {
-      tryBestSkill(me, actions);
+      usedSkillId = tryBestSkill(me, actions);
     }
 
     // 再决定落子点（无论是否刚刚加入了一个技能动作）
     const best = pickHeuristicMove(board, me, opp);
     actions.push({ type: 'move', x: best.x, y: best.y });
+
+    // 更新“梅开二度连续使用次数”
+    if (usedSkillId === 'meikaierdhu') {
+      meikaiChainCount += 1;
+    } else {
+      meikaiChainCount = 0;
+    }
 
     runActions(actions);
   }
@@ -233,14 +275,12 @@
   }
 
   // 选择技能：不再立即点击，而是把“点击技能按钮”塞进 actions
+  // 返回本回合计划使用的技能 id（如 'meikaierdhu'），若未选中则返回 null
   function tryBestSkill(me, actions) {
     const area = document.getElementById(`player${me}-skill-area`);
-    if (!area) return false;
+    if (!area) return null;
     const btns = Array.from(area.querySelectorAll('button')).filter(b => !b.disabled);
-    if (!btns.length) return false;
-
-    const hasDongshan = !gameState.dongshanUsed[3 - me];
-    const hasShoudao  = !gameState.shoudaoUsed[3 - me];
+    if (!btns.length) return null;
 
     // 当前总步数，用来避免“第一回合就静如止水”
     const totalMoves = (gameState.moveHistory && gameState.moveHistory.length) || 0;
@@ -260,10 +300,10 @@
       for (const b of btns) {
         if (!regex.test(b.innerText)) continue;
 
-        // ① 力拔山兮：如果对方还有东山/手刀，就尽量少用（和你之前设定一致）
-        if (/力拔山兮/.test(b.innerText) && (hasDongshan || hasShoudao)) continue;
+        // 梅开二度：如果已经连续用了 3 次，本回合就不再点它，改用别的技能/只落子
+        if (/梅开二度/.test(b.innerText) && meikaiChainCount >= 3) continue;
 
-        // ② 静如止水：避免开局就给人来一发（比如至少等双方各下 1 子以后）
+        // 静如止水：避免开局就给人来一发（比如至少等双方各下 1 子以后）
         if (/静如止水/.test(b.innerText) && totalMoves < 4) continue;
 
         if (window.AI_DEBUG) console.log('[AI] plan skill:', b.innerText);
@@ -273,10 +313,65 @@
           button: b,
           label: b.innerText
         });
-        return true;
+
+        // 从按钮文字里粗略猜一下技能 id
+        if (/梅开二度/.test(b.innerText)) return 'meikaierdhu';
+        if (/飞沙走石/.test(b.innerText)) return 'feishazoushi';
+        if (/静如止水/.test(b.innerText)) return 'jingruzhishui';
+        if (/力拔山兮/.test(b.innerText)) return 'libashanxi';
+
+        return null;
       }
     }
-    return false;
+    return null;
+  }
+
+  // 对方存在必胜点时：优先用技能来“防守”一手
+  // 顺序：飞沙走石 / 静如止水 → 梅开二度（受连续 3 次上限约束）→ 力拔山兮（仅在对方已形成明显四连威胁时）
+  function planDefenseWithSkills(me, opp, oppWin, actions) {
+    const area = document.getElementById(`player${me}-skill-area`);
+    if (!area) return;
+    const btns = Array.from(area.querySelectorAll('button')).filter(b => !b.disabled);
+    if (!btns.length) return;
+
+    let feishaBtn = null;
+    let jingruBtn = null;
+    let meikaiBtn = null;
+    let libaBtn   = null;
+
+    for (const b of btns) {
+      const txt = b.innerText || '';
+      if (/飞沙走石/.test(txt)) feishaBtn = b;
+      else if (/静如止水/.test(txt)) jingruBtn = b;
+      else if (/梅开二度/.test(txt)) meikaiBtn = b;
+      else if (/力拔山兮/.test(txt)) libaBtn = b;
+    }
+
+    // 1. 飞沙走石 / 静如止水 优先
+    if (feishaBtn) {
+      actions.push({ type: 'skill', button: feishaBtn, label: feishaBtn.innerText });
+      if (window.AI_DEBUG) console.log('[AI] defense skill: 飞沙走石');
+      return;
+    }
+    if (jingruBtn) {
+      actions.push({ type: 'skill', button: jingruBtn, label: jingruBtn.innerText });
+      if (window.AI_DEBUG) console.log('[AI] defense skill: 静如止水');
+      return;
+    }
+
+    // 2. 这两招都已经不可用时，用“梅开二度”拆对方形势（但最多连续 3 次）
+    if (meikaiBtn && meikaiChainCount < 3) {
+      actions.push({ type: 'skill', button: meikaiBtn, label: meikaiBtn.innerText });
+      if (window.AI_DEBUG) console.log('[AI] defense skill: 梅开二度');
+      return;
+    }
+
+    // 3. 梅开也用过了，并且局面上已经出现明显四连威胁时，最后一招用力拔山兮
+    if (libaBtn && hasOpenFour(board, opp)) {
+      actions.push({ type: 'skill', button: libaBtn, label: libaBtn.innerText });
+      if (window.AI_DEBUG) console.log('[AI] defense skill: 力拔山兮');
+      return;
+    }
   }
 
   // 简单洗牌函数
@@ -401,6 +496,48 @@
     let nx = x + dx, ny = y + dy; if (bd[ny]?.[nx] === 0) open++;
     nx = x - dx; ny = y - dy;      if (bd[ny]?.[nx] === 0) open++;
     return open;
+  }
+
+  // 判断棋盘上是否存在“活四”（0 p p p p 0）——任意方向
+  function hasOpenFour(bd, player) {
+    const dirs = [
+      [1, 0],  // 横
+      [0, 1],  // 竖
+      [1, 1],  // 正斜
+      [1, -1], // 反斜
+    ];
+    const SIZE = 15;
+
+    for (const [dx, dy] of dirs) {
+      // 我们检查长度为 6 的线段：0 p p p p 0
+      for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+          const x5 = x + dx * 5;
+          const y5 = y + dy * 5;
+          // 确保这 6 个点都在棋盘里
+          if (x5 < 0 || x5 >= SIZE || y5 < 0 || y5 >= SIZE) continue;
+
+          const a0 = bd[y][x];
+          const a1 = bd[y + dy][x + dx];
+          const a2 = bd[y + 2 * dy][x + 2 * dx];
+          const a3 = bd[y + 3 * dy][x + 3 * dx];
+          const a4 = bd[y + 4 * dy][x + 4 * dx];
+          const a5 = bd[y5][x5];
+
+          if (
+            a0 === 0 &&
+            a1 === player &&
+            a2 === player &&
+            a3 === player &&
+            a4 === player &&
+            a5 === 0
+          ) {
+            return true; // 找到一个活四
+          }
+        }
+      }
+    }
+    return false;
   }
 
   // ===== DEBUG TRIGGER FOR EDGE/MOBILE =====
