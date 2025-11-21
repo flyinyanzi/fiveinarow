@@ -7,7 +7,7 @@ let board;
 let gameOver = false;
 window.gameOver = false;
 
-// —— UI helpers ——
+// —— UI helpers —— 
 function showDialogForPlayer(playerId, text) {
   const box = document.getElementById(`dialog-player${playerId}`);
   if (box) box.innerText = text || "";
@@ -21,7 +21,7 @@ function clearDialogs() {
   showDialogForPlayer(2, "");
 }
 
-// —— 游戏状态（集中管理） ——
+// —— 游戏状态（集中管理） —— 
 const gameState = {
   board: [],
   currentPlayer: 1,
@@ -57,19 +57,40 @@ const gameState = {
   clearCell
 };
 
-// —— 启动入口 ——
+// —— 新局前：重置所有技能的使用状态 —— 
+function resetAllSkillState() {
+  if (!window.skills) return;
+  skills.forEach(s => {
+    // 清空“哪位玩家用过它”的记录
+    s.usedBy = [];
+    // 对隐藏技能（擒拿/调虎/东山/手刀/两极）重置可见性
+    if (s.hidden && s.visibleFor) {
+      s.visibleFor[1] = false;
+      s.visibleFor[2] = false;
+    }
+  });
+}
+
+// —— 启动入口 —— 
 function startGame() {
-  // —— 新局前：清理可能残留的力拔/口令计时器 —— //
+  // —— 每局开始：先重置技能状态 —— 
+  resetAllSkillState();
+
+  // —— 新局前：清理可能残留的梅开/力拔/口令计时器 —— 
+  if (gameState.reactionWindow && gameState.reactionWindow.timeoutId) {
+    clearTimeout(gameState.reactionWindow.timeoutId);
+  }
   if (gameState.apocWindow && gameState.apocWindow.timeoutId) {
     clearTimeout(gameState.apocWindow.timeoutId);
   }
   if (gameState.apocPrompt && gameState.apocPrompt.timerId) {
     clearInterval(gameState.apocPrompt.timerId);
   }
+  gameState.reactionWindow = null;
   gameState.apocWindow = null;
   gameState.apocPrompt = null;
 
-  // —— 读取用户选择并标准化 —— //
+  // —— 读取用户选择并标准化 —— 
   const playModeInput = document.querySelector('input[name="play-mode"]:checked');
   const skillModeInput = document.querySelector('input[name="skill-mode"]:checked');
   const diffSel = document.getElementById('ai-difficulty');
@@ -78,17 +99,15 @@ function startGame() {
   skillMode = (skillModeInput ? skillModeInput.value : 'free');              // 目前我们用自由选
   const aiDiff = (diffSel ? diffSel.value : 'NORMAL').toUpperCase();         // 'EASY'|'NORMAL'|'HARD'
 
-  // —— 写入全局，供 ai.js 轮询使用 —— //
+  // —— 写入全局，供 ai.js 轮询使用 —— 
   window.playMode = playMode;
   window.aiDifficulty = aiDiff;
 
-  // —— 关闭开始菜单，恢复三栏布局（flex） —— //
+  // —— 关闭开始菜单（用 hidden class，而不是改 display，方便返回时恢复原始样式） —— 
   const startMenu = document.getElementById("start-menu");
-  if (startMenu) startMenu.style.display = "none";
-  const container = document.querySelector(".game-container");
-  if (container) container.style.display = "flex";
+  if (startMenu) startMenu.classList.add("hidden");
 
-  // —— 棋面与状态初始化 —— //
+  // —— 棋面与状态初始化 —— 
   gameState.board = Array.from({ length: 15 }, () => Array(15).fill(0));
   board = gameState.board;
 
@@ -121,12 +140,12 @@ function startGame() {
   gameState.shoudaoUsed = { 1: false, 2: false };
   gameState.liangjiUsed = { 1: false, 2: false };
 
-  // —— 启动 —— //
+  // —— 启动 —— 
   initBoard();
   handleStartOfTurn(); // 会渲染回合提示与技能面板
 }
 
-// —— 回合开始：清对白 → 跳过 → 额外回合禁技生效 → 刷新UI ——
+// —— 回合开始：清对白 → 跳过 → 额外回合禁技生效 → 刷新UI —— 
 function handleStartOfTurn() {
   clearDialogs();
   gameState.skillUsedThisTurn = false;
@@ -421,7 +440,7 @@ function markSkillVisibleFor(skillId, playerId, visible, timeoutMs) {
 
 // ——————————————————————————————
 // 力拔山兮 / 东山再起 / 手刀 / 两极反转
-// ——————————————————————————————
+// —————————————————————————————— 
 
 function deepCopyBoard(bd){ return bd.map(r => r.slice()); }
 function snapshotGame(){
@@ -725,7 +744,7 @@ function applySwapPieces() {
   gameState.lastMoveBy[2] = l1 ? { ...l1 } : null;
 }
 
-// —— 技能面板渲染（左右两侧） ——
+// —— 技能面板渲染（左右两侧） —— 
 function renderSkillPool(playerId) {
   const area = document.getElementById(`player${playerId}-skill-area`);
   area.innerHTML = '';
@@ -738,7 +757,7 @@ function renderSkillPool(playerId) {
   skills.forEach(skill => {
     if (skill.enabled === false) return;
 
-    // —— 特殊渲染 1：擒拿（仅在“梅开二度”准备的3秒窗口内） ——
+    // —— 特殊渲染 1：擒拿（仅在“梅开二度”准备的3秒窗口内） —— 
     if (skill.id === 'qin_na') {
       const canReact = react && react.defenderId === playerId && react.forSkillId === 'meikaierdhu';
       if (!canReact) return;
@@ -752,7 +771,7 @@ function renderSkillPool(playerId) {
       return;
     }
 
-    // —— 特殊渲染 2：调虎离山（被擒后3秒窗口，对进攻方开放；每人一次） ——
+    // —— 特殊渲染 2：调虎离山（被擒后3秒窗口，对进攻方开放；每人一次） —— 
     if (skill.id === 'tiaohulishan') {
       const canCounter = react && react.defenderId === playerId && react.forSkillId === 'tiaohulishan';
       const already = skills.find(s => s.id === 'tiaohulishan')?.usedBy?.includes(playerId);
@@ -777,7 +796,7 @@ function renderSkillPool(playerId) {
       return;
     }
 
-    // —— 特殊渲染 3：力拔山兮的克制选项（东山 / 手刀）3秒窗口 ——
+    // —— 特殊渲染 3：力拔山兮的克制选项（东山 / 手刀）3秒窗口 —— 
     if (skill.id === 'dongshanzaiqi') {
       const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liba_select' && !gameState.dongshanUsed[playerId];
       if (!can) return;
@@ -801,7 +820,7 @@ function renderSkillPool(playerId) {
       return;
     }
 
-    // —— 特殊渲染 4：两极反转（当B已用完东山/手刀且A再次力拔时，3秒内按钮） ——
+    // —— 特殊渲染 4：两极反转（当B已用完东山/手刀且A再次力拔时，3秒内按钮） —— 
     if (skill.id === 'liangjifanzhuan') {
       const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liangji' && !gameState.liangjiUsed[playerId];
       if (!can) return;
@@ -834,7 +853,7 @@ function renderSkillPool(playerId) {
     // 非当前玩家 → 灰
     if (playerId !== currentPlayer) { disabled = true; tip = "非当前回合"; }
 
-    // 已使用过（如调虎离山/东山/手刀/两极） → 深灰
+    // 已使用过（如调虎离山/东山/手刀/两极/力拔/梅开） → 深灰
     if (used) { disabled = true; btn.innerText += " ✅"; tip = "已使用"; }
 
     // 静如止水跳过 → 灰
@@ -914,35 +933,67 @@ function renderSkillPool(playerId) {
   });
 }
 
-
-// 导出给 skills.js 调用的函数（若你用 bundler 可改为模块化）
+// 导出给 HTML 调用
 window.startGame = startGame;
 
-// —— 页面加载完之后，给“再来一局 / 返回首页”按钮挂事件 —— //
+// —— 再来一局 / 返回首页 按钮事件 —— 
 window.addEventListener('DOMContentLoaded', () => {
-  const restartBtn = document.getElementById('btn-restart');
-  const backBtn    = document.getElementById('btn-back-home');
+  const btnRestart  = document.getElementById('btn-restart');
+  const btnBackHome = document.getElementById('btn-back-home');
 
-  if (restartBtn) {
-    restartBtn.onclick = () => {
-      // 直接用当前的模式 / 难度重新开一局
-      // （startGame 会重新读取首页的单选框/下拉框设置）
-      startGame();
-    };
-  }
-
-  if (backBtn) {
-    backBtn.onclick = () => {
-      // 标记游戏结束，避免 AI 继续在后台落子
+  // 再来一局：在当前模式/难度下重开一盘
+  if (btnRestart) {
+    btnRestart.addEventListener('click', () => {
       gameOver = false;
       window.gameOver = false;
 
-      clearDialogs();  // 把左右对话框文字清空一下，看起来更干净
+      // 防御性清理各种窗口和计时器
+      if (gameState.reactionWindow && gameState.reactionWindow.timeoutId) {
+        clearTimeout(gameState.reactionWindow.timeoutId);
+      }
+      if (gameState.apocWindow && gameState.apocWindow.timeoutId) {
+        clearTimeout(gameState.apocWindow.timeoutId);
+      }
+      if (gameState.apocPrompt && gameState.apocPrompt.timerId) {
+        clearInterval(gameState.apocPrompt.timerId);
+      }
 
-      const startMenu = document.getElementById("start-menu");
-      const container = document.querySelector(".game-container");
-      if (startMenu)  startMenu.style.display = "block";
-      if (container)  container.style.display = "none";
-    };
+      gameState.reactionWindow = null;
+      gameState.apocWindow = null;
+      gameState.apocPrompt = null;
+      gameState.preparedSkill = null;
+
+      startGame();
+    });
+  }
+
+  // 返回首页：不刷新页面，只把开始菜单遮罩重新盖上
+  if (btnBackHome) {
+    btnBackHome.addEventListener('click', () => {
+      gameOver = true;
+      window.gameOver = true;
+
+      // 清一清状态，避免后台还在跑窗口
+      if (gameState.reactionWindow && gameState.reactionWindow.timeoutId) {
+        clearTimeout(gameState.reactionWindow.timeoutId);
+      }
+      if (gameState.apocWindow && gameState.apocWindow.timeoutId) {
+        clearTimeout(gameState.apocWindow.timeoutId);
+      }
+      if (gameState.apocPrompt && gameState.apocPrompt.timerId) {
+        clearInterval(gameState.apocPrompt.timerId);
+      }
+
+      gameState.reactionWindow = null;
+      gameState.apocWindow = null;
+      gameState.apocPrompt = null;
+      gameState.preparedSkill = null;
+
+      // 只需要把开始菜单显示回去即可，背景棋盘保留
+      const startMenu = document.getElementById('start-menu');
+      if (startMenu) {
+        startMenu.classList.remove('hidden');
+      }
+    });
   }
 });
