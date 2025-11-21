@@ -384,8 +384,8 @@
       return;
     }
 
-    // 3. 梅开也用过了，并且局面上已经出现明显四连威胁时，最后一招用力拔山兮
-    if (libaBtn && hasOpenFour(board, opp)) {
+    // 3. 梅开也用过了，并且局面上已经出现活 4 威胁时，最后一招用力拔山兮
+    if (libaBtn && hasOpenFour(gameState.board, opp)) {
       actions.push({ type: 'skill', button: libaBtn, label: libaBtn.innerText });
       if (window.AI_DEBUG) console.log('[AI] defense skill: 力拔山兮');
       return;
