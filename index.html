@@ -44,9 +44,18 @@
     <label><input type="radio" name="play-mode" value="pvp" checked> 玩家 vs 玩家</label>
     <label><input type="radio" name="play-mode" value="pve"> 玩家 vs AI</label>
 
+    <!-- 新增：游戏模式（对战 / 解压） -->
+    <h2 style="margin-top:10px;">游戏模式</h2>
+    <label><input type="radio" name="game-mode" value="normal" checked> 对战模式</label>
+    <label><input type="radio" name="game-mode" value="relax"> 解压模式</label>
+
     <!-- 如需“玩法选择（自由选/随机抽）”可在下方继续加一组单选 -->
 
-    <h2 style="margin-top:10px;">AI 难度</h2>
+    <h2 style="margin-top:10px;">AI 难度
+      <span id="ai-diff-hint" style="font-size:12px; margin-left:4px; opacity:.9;">
+        （仅玩家 vs AI 时生效）
+      </span>
+    </h2>
     <select id="ai-difficulty">
       <option value="EASY">简单</option>
       <option value="NORMAL" selected>普通</option>
