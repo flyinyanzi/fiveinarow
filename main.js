@@ -59,7 +59,7 @@ const gameState = {
 
 // —— 新局前：重置所有技能的使用状态 —— 
 function resetAllSkillState() {
-  if (!window.skills) return;
+  if (typeof skills === 'undefined') return;
   skills.forEach(s => {
     // 清空“哪位玩家用过它”的记录
     s.usedBy = [];
