@@ -59,6 +59,16 @@ const gameState = {
 
 // —— 启动入口 ——
 function startGame() {
+  // —— 新局前：清理可能残留的力拔/口令计时器 —— //
+  if (gameState.apocWindow && gameState.apocWindow.timeoutId) {
+    clearTimeout(gameState.apocWindow.timeoutId);
+  }
+  if (gameState.apocPrompt && gameState.apocPrompt.timerId) {
+    clearInterval(gameState.apocPrompt.timerId);
+  }
+  gameState.apocWindow = null;
+  gameState.apocPrompt = null;
+
   // —— 读取用户选择并标准化 —— //
   const playModeInput = document.querySelector('input[name="play-mode"]:checked');
   const skillModeInput = document.querySelector('input[name="skill-mode"]:checked');
@@ -907,3 +917,32 @@ function renderSkillPool(playerId) {
 
 // 导出给 skills.js 调用的函数（若你用 bundler 可改为模块化）
 window.startGame = startGame;
+
+// —— 页面加载完之后，给“再来一局 / 返回首页”按钮挂事件 —— //
+window.addEventListener('DOMContentLoaded', () => {
+  const restartBtn = document.getElementById('btn-restart');
+  const backBtn    = document.getElementById('btn-back-home');
+
+  if (restartBtn) {
+    restartBtn.onclick = () => {
+      // 直接用当前的模式 / 难度重新开一局
+      // （startGame 会重新读取首页的单选框/下拉框设置）
+      startGame();
+    };
+  }
+
+  if (backBtn) {
+    backBtn.onclick = () => {
+      // 标记游戏结束，避免 AI 继续在后台落子
+      gameOver = false;
+      window.gameOver = false;
+
+      clearDialogs();  // 把左右对话框文字清空一下，看起来更干净
+
+      const startMenu = document.getElementById("start-menu");
+      const container = document.querySelector(".game-container");
+      if (startMenu)  startMenu.style.display = "block";
+      if (container)  container.style.display = "none";
+    };
+  }
+});
