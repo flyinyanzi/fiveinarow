@@ -31,9 +31,9 @@
       padding: 10px 14px; font-size: 14px; border-radius:10px; border:1px solid #bbb;
       background:#fff; color:#222; cursor:pointer;
     }
-    .start-menu .muted {
-      opacity: 0.6;
-      font-size: 13px;
+    /* 通用隐藏：用于开始菜单的开关 */
+    .hidden {
+      display: none !important;
     }
   </style>
 </head>
@@ -44,21 +44,14 @@
     <label><input type="radio" name="play-mode" value="pvp" checked> 玩家 vs 玩家</label>
     <label><input type="radio" name="play-mode" value="pve"> 玩家 vs AI</label>
 
-    <!-- 游戏模式：对战 / 解压 -->
-    <h2 style="margin-top:10px;">游戏模式</h2>
-    <label><input type="radio" name="game-mode" value="normal" checked> 对战模式</label>
-    <label><input type="radio" name="game-mode" value="relax"> 解压模式</label>
+    <!-- 如需“玩法选择（自由选/随机抽）”可在下方继续加一组单选 -->
 
-    <!-- AI 难度（仅在 玩家 vs AI 时可选） -->
     <h2 style="margin-top:10px;">AI 难度</h2>
     <select id="ai-difficulty">
       <option value="EASY">简单</option>
       <option value="NORMAL" selected>普通</option>
       <option value="HARD">困难</option>
     </select>
-    <div id="ai-diff-hint" class="muted">
-      （仅“玩家 vs AI”时生效）
-    </div>
 
     <p style="margin-top:10px;opacity:.9">
       （为保持最佳游戏体验，建议把手机横屏，并隐藏工具栏）
@@ -89,12 +82,12 @@
       <div class="dialog" id="dialog-player2"></div>
       <div id="player2-skill-area" class="skill-area"></div>
     </div>
+  </div>
 
-    <!-- 控制按钮区域 -->
-    <div id="control-bar" style="margin-top: 8px; text-align: center;">
-      <button id="btn-restart">再来一局</button>
-      <button id="btn-back-home" style="margin-left: 12px;">返回首页</button>
-    </div>
+  <!-- 控制按钮区域：单独占一行，避免压缩棋盘 -->
+  <div id="control-bar" style="margin-top: 8px; text-align: center;">
+    <button id="btn-restart">再来一局</button>
+    <button id="btn-back-home" style="margin-left: 12px;">返回首页</button>
   </div>
 
   <!-- 脚本顺序保持不变；已添加 ai.js，在 main.js 之后再引入 -->
