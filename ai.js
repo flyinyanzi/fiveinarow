@@ -17,6 +17,10 @@
   // 梅开二度连续使用计数（连续超过 3 次就暂时不用）
   let meikaiChainCount = 0;
 
+  // 让反制技能真正“按概率触发”
+  let lastReactionKey = null;
+  let lastApocKey = null;
+
   // 哪个玩家是AI：仅在玩家 vs AI（pve）时启用玩家2为AI（全局优先，DOM 兜底）
   function getIsAI() {
     let mode = (typeof window !== 'undefined' ? window.playMode : '') || '';
@@ -41,24 +45,38 @@
 
     const isAI = getIsAI();
 
+    // 如果窗口已经消失，就把对应的 key 清空
+    if (!gameState.reactionWindow) lastReactionKey = null;
+    if (!gameState.apocWindow) lastApocKey = null;
+
     // —— 先处理“反制窗口”：不管 currentPlayer 是谁，只看 defender 是不是 AI —— //
 
     // 梅开二度 / 调虎离山 的 3 秒反应窗口
     if (gameState.reactionWindow) {
-      const d = gameState.reactionWindow.defenderId;   // 该反应的一方
+      const r = gameState.reactionWindow;
+      const d = r.defenderId;   // 该反应的一方
       if (isAI[d]) {
-        if (window.AI_DEBUG) console.log('[AI] handle reactionWindow for player', d);
-        handleQinnaTiaohu(d);   // 里面会按 qinna / tiaohu 概率决定要不要点
-        return;                  // 这一帧只做反制相关动作
+        const key = `${r.forSkillId}-${r.defenderId}-${r.timeoutId}`;
+        if (lastReactionKey !== key) {
+          lastReactionKey = key;
+          if (window.AI_DEBUG) console.log('[AI] handle reactionWindow for player', d);
+          handleQinnaTiaohu(d);
+        }
+        return;
       }
     }
 
     // 力拔山兮的 3 秒反制窗口（东山 / 手刀 / 两极反转）
     if (gameState.apocWindow) {
-      const d = gameState.apocWindow.defenderId;
+      const w = gameState.apocWindow;
+      const d = w.defenderId;
       if (isAI[d]) {
-        if (window.AI_DEBUG) console.log('[AI] handle apocWindow for player', d);
-        handleLibaCounter(d);   // 按 libaCounterOH / libaCounterLJ 概率决定
+        const key = `${w.mode}-${w.attackerId}-${w.defenderId}-${w.timeoutId}`;
+        if (lastApocKey !== key) {
+          lastApocKey = key;
+          if (window.AI_DEBUG) console.log('[AI] handle apocWindow for player', d);
+          handleLibaCounter(d);
+        }
         return;
       }
     }
