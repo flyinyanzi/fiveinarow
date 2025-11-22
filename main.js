@@ -247,9 +247,6 @@ function handleStartOfTurn() {
   renderSkillPool(1);
   renderSkillPool(2);
   updateTurnIndicator();
-
-  // ★ 新增：在回合开始时检查是否刚刚走完第18手
-  showLucky18IfNeeded();
 }
 
 // —— 棋盘/UI ——
@@ -295,6 +292,7 @@ function initBoard() {
     gameState.moveMadeThisTurn = true;
     gameState.lastMoveBy[currentPlayer] = { x, y };
     gameState.moveHistory.push({ player: currentPlayer, x, y });
+    showLucky18IfNeeded();
 
     // —— 对战模式：正常判五连即胜 —— 
     if (gameMode === 'normal') {
@@ -423,6 +421,11 @@ function handleBangqiuRelax(playerId) {
 
   if (hit) {
     window.__bangqiuHitStreak++;
+
+    if (window.__bangqiuHitStreak >= 3) {
+      showDialogForPlayer(playerId, "你是职业棒球手吗？");
+      window.__bangqiuHitStreak = 0; // 说完重置，避免刷屏
+    }
   } else {
     window.__bangqiuHitStreak = 0;
   }
@@ -444,21 +447,14 @@ function handleBangqiuRelax(playerId) {
 
   if (stones.length === 0) {
     showDialogForPlayer(playerId, "本垒打！不过棋盘上还空空的，不能打飞棋子咯。");
-  } else {
-    const choice = stones[Math.floor(Math.random() * stones.length)];
-    board[choice.y][choice.x] = 0;
-    clearCell(choice.x, choice.y);
-
-    showDialogForPlayer(playerId, "本垒打！把一颗棋子打飞出场！");
+    return;
   }
 
-  // ★ 隐藏彩蛋：连续三次命中，延迟再夸一句
-  if (window.__bangqiuHitStreak >= 3) {
-    window.__bangqiuHitStreak = 0;
-    setTimeout(() => {
-      showDialogForPlayer(playerId, "你是职业棒球手吗？");
-    }, 1500); // 约 1.5 秒后再说
-  }
+  const choice = stones[Math.floor(Math.random() * stones.length)];
+  board[choice.y][choice.x] = 0;
+  clearCell(choice.x, choice.y);
+
+  showDialogForPlayer(playerId, "本垒打！把一颗棋子打飞出场！");
 }
 
 function isBoardFull() {
@@ -961,12 +957,8 @@ function showLucky18IfNeeded() {
   if (moves !== 18) return;
 
   if (Math.random() < 0.5) {
-    // 第 18 手已经落完，此时 currentPlayer 已经切换到下一位
-    const lastMove = gameState.moveHistory[gameState.moveHistory.length - 1];
-    const target = lastMove ? lastMove.player : currentPlayer;
-
     showDialogForPlayer(
-      target,
+      gameState.currentPlayer,
       "现在是第18回合，很幸运的数字呢。"
     );
   }
@@ -1196,6 +1188,11 @@ function renderSkillPool(playerId) {
 
   skills.forEach(skill => {
     if (skill.enabled === false) return;
+
+    // 对战模式下，不显示棒球技能
+    if (skill.id === 'bangqiu' && gameMode === 'normal') {
+      return;
+    }
 
     // —— 解压模式下：飞沙 / 静如止水等需要冷却的技能 —— 
     const isRelaxCdSkill = (gameMode === 'relax' && RELAX_COOLDOWN_SKILLS.includes(skill.id));
