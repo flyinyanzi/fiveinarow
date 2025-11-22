@@ -1122,6 +1122,14 @@ function renderSkillPool(playerId) {
     const isRelaxCdSkill = (gameMode === 'relax' && RELAX_COOLDOWN_SKILLS.includes(skill.id));
     const cd = isRelaxCdSkill ? getCooldown(skill.id, playerId) : 0;
 
+    // —— 解压模式下：两极反转当成常驻大招，不再视为隐藏 —— 
+    if (skill.id === 'liangjifanzhuan' && gameMode === 'relax') {
+      skill.hidden = false;
+      skill.visibleFor = skill.visibleFor || { 1: true, 2: true };
+      skill.visibleFor[1] = true;
+      skill.visibleFor[2] = true;
+    }
+
     // —— 特殊渲染 1：擒拿（仅在“梅开二度”准备的3秒窗口内） ——
     if (skill.id === 'qin_na') {
       const canReact =
@@ -1409,12 +1417,12 @@ function renderSkillPool(playerId) {
       // —— 标记一回合一技 —— 
       gameState.skillUsedThisTurn = true;
 
-      // 一次性技能：用 usedBy 标记“已用”
-      if (!isRelaxCdSkill) {
-        skill.usedBy = skill.usedBy || [];
-        skill.usedBy.push(playerId);
-      } else {
-        // 解压模式：冷却技能（飞沙 / 静如止水 / 两极反转 / 棒球 etc）
+      // 所有技能都记录“曾经使用过”
+      skill.usedBy = skill.usedBy || [];
+      skill.usedBy.push(playerId);
+
+      // 解压模式：冷却技能（飞沙 / 静如止水 / 两极反转 / 棒球 etc）
+      if (isRelaxCdSkill) {
         const turns = RELAX_SKILL_COOLDOWN_TURNS[skill.id] || 2;
         setCooldown(skill.id, playerId, turns);
       }
