@@ -1447,7 +1447,9 @@ function renderSkillPool(playerId) {
           AI_LIANGJI_QUOTES.length
         ) {
           const line = AI_LIANGJI_QUOTES[Math.floor(Math.random() * AI_LIANGJI_QUOTES.length)];
-          showDialogForPlayer(2, line);
+          setTimeout(() => {
+            showDialogForPlayer(2, line);
+          }, 2200);
         }
 
         renderSkillPool(1);
