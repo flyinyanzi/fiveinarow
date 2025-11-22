@@ -222,7 +222,7 @@ function handleStartOfTurn() {
   updateTurnIndicator();
 }
 
-// —— 棋盘/UI —— 
+// —— 棋盘/UI ——
 function initBoard() {
   const canvas = document.getElementById("board");
   const ctx = canvas.getContext("2d");
@@ -266,11 +266,14 @@ function initBoard() {
     gameState.lastMoveBy[currentPlayer] = { x, y };
     gameState.moveHistory.push({ player: currentPlayer, x, y });
 
-    if (checkWinFixed(x, y, currentPlayer)) {
-      showDialogForPlayer(currentPlayer, `🎉 玩家${currentPlayer}获胜！`);
-      gameOver = true;
-      window.gameOver = true;
-      return;
+    // —— 对战模式：正常判五连即胜 —— 
+    if (gameMode === 'normal') {
+      if (checkWinFixed(x, y, currentPlayer)) {
+        showDialogForPlayer(currentPlayer, `🎉 玩家${currentPlayer}获胜！`);
+        gameOver = true;
+        window.gameOver = true;
+        return;
+      }
     }
 
     const justPlayed = currentPlayer;
@@ -281,6 +284,12 @@ function initBoard() {
     if (gameState.bonusTurnNoSkillFor === justPlayed) {
       gameState.bonusTurnNoSkillFor = null;
       gameState.bonusTurnPendingFor = null;
+    }
+
+    // —— 解压模式：不判输赢，只在棋满时自动结算 —— 
+    if (gameMode === 'relax' && isBoardFull()) {
+      settleGameByCount('full');
+      return;
     }
 
     handleStartOfTurn();
@@ -298,7 +307,7 @@ function initBoard() {
     const cx = rect.left + gridX * cellX + cellX / 2;
     const cy = rect.top  + gridY * cellY + cellY / 2;
 
-    // 直接复用你现成的 onclick 内部逻辑
+    // 直接复用 onclick 内部逻辑
     canvas.onclick({ clientX: cx, clientY: cy });
   };
 }
@@ -567,6 +576,12 @@ function applySnapshot(snap){
 function startLibashanxi(attackerId) {
   if (gameOver) return;
 
+  // —— 解压模式：使用爆炸洗牌版，不走东山/手刀/两极那套 —— 
+  if (gameMode === 'relax') {
+    startLibashanxiRelax(attackerId);
+    return;
+  }
+
   // 被两极反转封印？
   if (gameState.libaSealedFor === attackerId) {
     showDialogForPlayer(attackerId, "我的力拔山兮已被封印……");
@@ -619,6 +634,75 @@ function startLibashanxi(attackerId) {
   }
 
   renderSkillPool(1); renderSkillPool(2);
+}
+
+// —— 解压模式下的“爆炸洗牌版”力拔山兮 —— 
+function startLibashanxiRelax(attackerId) {
+  const defenderId = 3 - attackerId;
+
+  // 收集棋子位置
+  const own = [];
+  const opp = [];
+  for (let y = 0; y < 15; y++) {
+    for (let x = 0; x < 15; x++) {
+      if (board[y][x] === attackerId) own.push({ x, y });
+      else if (board[y][x] === defenderId) opp.push({ x, y });
+    }
+  }
+
+  if (own.length === 0 && opp.length === 0) {
+    showDialogForPlayer(attackerId, "棋盘上还没什么东西可以掀……再下几手再试吧。");
+    return;
+  }
+
+  // 抖一抖（如果你以后在 CSS 里加 .shake，可以这里加/删）
+  const canvas = document.getElementById('board');
+  if (canvas) {
+    canvas.classList.add('shake-board');
+    setTimeout(() => canvas.classList.remove('shake-board'), 600);
+  }
+
+  // 设定要炸掉的总数：3～7 颗，但不能超过总子数
+  const totalStones = own.length + opp.length;
+  const maxRemove = Math.min(totalStones, 7);
+  const minRemove = Math.min(maxRemove, 3);
+  const removeCount = minRemove + Math.floor(Math.random() * (maxRemove - minRemove + 1));
+
+  // 优先炸对方，最多 4 颗
+  const toRemove = [];
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  }
+
+  shuffle(opp);
+  shuffle(own);
+
+  const oppRemove = Math.min(4, opp.length, removeCount);
+  for (let i = 0; i < oppRemove; i++) {
+    toRemove.push({ ...opp[i], owner: defenderId });
+  }
+
+  let remaining = removeCount - oppRemove;
+  const ownRemove = Math.min(remaining, own.length);
+  for (let i = 0; i < ownRemove; i++) {
+    toRemove.push({ ...own[i], owner: attackerId });
+  }
+
+  // 真正从棋盘上移除
+  toRemove.forEach(p => {
+    board[p.y][p.x] = 0;
+    clearCell(p.x, p.y);
+  });
+
+  showDialogForPlayer(attackerId, `力拔山兮！！！棋盘一阵天翻地覆，炸飞了 ${toRemove.length} 颗棋。`);
+  showDialogForPlayer(defenderId, `刚刚有 ${oppRemove} 颗棋子被掀飞了……自己的也被卷进去了一点。`);
+
+  // 解压模式下：力拔山兮只是搞事情，不结束游戏，也不进入克制窗口
+  gameState.skillUsedThisTurn = true;
 }
 
 function openApocPrompt(defenderId, counterId) {
@@ -831,7 +915,7 @@ function applySwapPieces() {
   gameState.lastMoveBy[2] = l1 ? { ...l1 } : null;
 }
 
-// —— 技能面板渲染（左右两侧） —— 
+// —— 技能面板渲染（左右两侧） ——
 function renderSkillPool(playerId) {
   const area = document.getElementById(`player${playerId}-skill-area`);
   area.innerHTML = '';
@@ -843,6 +927,10 @@ function renderSkillPool(playerId) {
 
   skills.forEach(skill => {
     if (skill.enabled === false) return;
+
+    // —— 解压模式下：飞沙 / 静如止水等需要冷却的技能 —— 
+    const isRelaxCdSkill = (gameMode === 'relax' && RELAX_COOLDOWN_SKILLS.includes(skill.id));
+    const cd = isRelaxCdSkill ? getCooldown(skill.id, playerId) : 0;
 
     // —— 特殊渲染 1：擒拿（仅在“梅开二度”准备的3秒窗口内） —— 
     if (skill.id === 'qin_na') {
@@ -858,7 +946,7 @@ function renderSkillPool(playerId) {
       return;
     }
 
-    // —— 特殊渲染 2：调虎离山（被擒后3秒窗口，对进攻方开放；每人一次） —— 
+    // —— 特殊渲染 2：调虎离山 —— 
     if (skill.id === 'tiaohulishan') {
       const canCounter = react && react.defenderId === playerId && react.forSkillId === 'tiaohulishan';
       const already = skills.find(s => s.id === 'tiaohulishan')?.usedBy?.includes(playerId);
@@ -869,7 +957,6 @@ function renderSkillPool(playerId) {
       btn.innerText = skill.name;
       btn.title = '擒拿后可发动调虎离山（3秒内）';
       btn.onclick = () => {
-        // 立刻锁死并隐藏，杜绝连点
         btn.disabled = true;
         btn.onclick = null;
         btn.classList.add('skill-disabled');
@@ -883,13 +970,13 @@ function renderSkillPool(playerId) {
       return;
     }
 
-    // —— 特殊渲染 3：力拔山兮的克制选项（东山 / 手刀）3秒窗口 —— 
+    // —— 特殊渲染 3：力拔山兮克制（东山 / 手刀） —— 
     if (skill.id === 'dongshanzaiqi') {
       const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liba_select' && !gameState.dongshanUsed[playerId];
       if (!can) return;
       const btn = document.createElement('button');
       btn.className = 'skill-button';
-      btn.innerText = skill.name;  // “捡起棋盘”
+      btn.innerText = skill.name;
       btn.title = '3秒内可点 → 进入10秒口令：输入“东山再起”并发送';
       btn.onclick = () => { currentPlayer = playerId; gameState.currentPlayer = playerId; openApocPrompt(playerId, 'dongshanzaiqi'); };
       area.appendChild(btn);
@@ -907,7 +994,7 @@ function renderSkillPool(playerId) {
       return;
     }
 
-    // —— 特殊渲染 4：两极反转（当B已用完东山/手刀且A再次力拔时，3秒内按钮） —— 
+    // —— 特殊渲染 4：两极反转 —— 
     if (skill.id === 'liangjifanzhuan') {
       const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liangji' && !gameState.liangjiUsed[playerId];
       if (!can) return;
@@ -928,7 +1015,9 @@ function renderSkillPool(playerId) {
     if (skill.visibleFor && skill.visibleFor[playerId] === false) return;
     if (skill.hidden === true && !(skill.visibleFor && skill.visibleFor[playerId])) return;
 
-    const used = skill.usedBy?.includes(playerId);
+    // 解压冷却技能：不再用 usedBy 限制次数
+    const used = (!isRelaxCdSkill && skill.usedBy?.includes(playerId));
+
     const btn = document.createElement('button');
     btn.className = 'skill-button';
     btn.innerText = skill.name;
@@ -940,7 +1029,7 @@ function renderSkillPool(playerId) {
     // 非当前玩家 → 灰
     if (playerId !== currentPlayer) { disabled = true; tip = "非当前回合"; }
 
-    // 已使用过（如调虎离山/东山/手刀/两极/力拔/梅开） → 深灰
+    // 已使用过（一次性技能） → 深灰
     if (used) { disabled = true; btn.innerText += " ✅"; tip = "已使用"; }
 
     // 静如止水跳过 → 灰
@@ -964,11 +1053,20 @@ function renderSkillPool(playerId) {
       disabled = true; tip = "已被两极反转封印";
     }
 
+    // 解压模式：冷却中的飞沙 / 静如止水 等
+    if (isRelaxCdSkill && cd > 0) {
+      disabled = true;
+      tip = `冷却中，还剩 ${cd} 回合可激活`;
+      btn.classList.add('skill-disabled');
+    }
+
     if (disabled) {
       btn.disabled = true;
-      // 区分“已用(深灰)”与“不可用(浅灰)”
-      if (used) btn.classList.add('skill-used');
-      else      btn.classList.add('skill-disabled');
+      if (!btn.classList.contains('skill-disabled') && !btn.classList.contains('skill-used')) {
+        // 区分“已用(深灰)”与“不可用(浅灰)”
+        if (used) btn.classList.add('skill-used');
+        else      btn.classList.add('skill-disabled');
+      }
       if (tip) btn.title = tip;
     }
 
@@ -994,13 +1092,13 @@ function renderSkillPool(playerId) {
         startPreparedSkill(playerId, 'meikaierdhu'); return;
       }
 
-      // 特例：力拔山兮（不进入一回合一技；它开启3秒窗口，期间禁其他一切）
+      // 特例：力拔山兮
       if (skill.id === 'libashanxi') {
         startLibashanxi(playerId);
         return;
       }
 
-      // 其他普通技能（飞沙/静如止水）
+      // 其他普通技能（飞沙/静如止水等）
       if (skill.needsOpponentLastMove && !gameState.lastMoveBy[3 - playerId]) { showDialogForPlayer(playerId, "对方还没有落子，无计可施哦"); return; }
       if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) { showDialogForPlayer(playerId, "现在对方一子未下，技能无从施展！"); return; }
 
@@ -1008,10 +1106,17 @@ function renderSkillPool(playerId) {
       gameState.currentPlayer = playerId;
       skill.effect(gameState);
 
-      // 标记一回合一技（反应技不计次）
-      skill.usedBy = skill.usedBy || [];
-      skill.usedBy.push(playerId);
+      // —— 标记一回合一技 —— 
       gameState.skillUsedThisTurn = true;
+
+      // 一次性技能：用 usedBy 标记“已用”
+      if (!isRelaxCdSkill) {
+        skill.usedBy = skill.usedBy || [];
+        skill.usedBy.push(playerId);
+      } else {
+        // 解压模式：冷却技能（飞沙 / 静如止水） → 设置 2 回合冷却，可反复使用
+        setCooldown(skill.id, playerId, 2);
+      }
 
       renderSkillPool(1); renderSkillPool(2);
     };
@@ -1107,4 +1212,32 @@ window.addEventListener('DOMContentLoaded', () => {
     playModeRadios.forEach(r => r.addEventListener('change', updateDiffState));
   }
   updateDiffState();
+
+  // —— 新增：解压模式用的“提前结算”按钮 —— 
+  const ctrlBar = document.getElementById('control-bar');
+  if (ctrlBar && !document.getElementById('btn-early-end')) {
+    const btnEarly = document.createElement('button');
+    btnEarly.id = 'btn-early-end';
+    btnEarly.textContent = '提前结算';
+    btnEarly.style.marginLeft = '12px';
+    ctrlBar.appendChild(btnEarly);
+
+    btnEarly.addEventListener('click', () => {
+      if (gameOver) return;
+
+      // 仅解压模式可用
+      if (gameMode !== 'relax') {
+        showDialogForPlayer(currentPlayer, "对战模式暂不支持提前结算，打完这局再走吧～");
+        return;
+      }
+
+      if (isBoardEmpty()) {
+        showDialogForPlayer(1, "还没有任何落子，现在结算有点太早啦。");
+        showDialogForPlayer(2, "");
+        return;
+      }
+
+      settleGameByCount('early');
+    });
+  }
 });
