@@ -186,7 +186,7 @@ const skills = [
       me.usedBy = me.usedBy || [];
       if (!me.usedBy.includes(caster)) me.usedBy.push(caster);
     }
-  }
+  },
 
   // 10) 棒球 —— 解压模式用技能（普通模式只是提示一下）
   {
