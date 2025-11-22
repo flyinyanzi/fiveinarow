@@ -292,6 +292,7 @@ function initBoard() {
     gameState.moveMadeThisTurn = true;
     gameState.lastMoveBy[currentPlayer] = { x, y };
     gameState.moveHistory.push({ player: currentPlayer, x, y });
+    showLucky18IfNeeded();
 
     // —— 对战模式：正常判五连即胜 —— 
     if (gameMode === 'normal') {
@@ -299,6 +300,16 @@ function initBoard() {
         showDialogForPlayer(currentPlayer, `🎉 玩家${currentPlayer}获胜！`);
         gameOver = true;
         window.gameOver = true;
+        // === 隐藏彩蛋：输给 AI 的安慰台词 ===
+        if (
+          window.playMode === 'pve' &&  // 对战模式是“玩家 vs AI”
+          currentPlayer === 2 &&        // AI 是玩家2
+          Math.random() < 0.5           // 50% 概率
+        ) {
+          setTimeout(() => {
+            showDialogForPlayer(1, "今天也辛苦了呢，希望你获得快乐～");
+          }, 2200);
+        }
         return;
       }
     }
@@ -385,6 +396,7 @@ function checkWinFixed(x, y, player) {
   }
   return false;
 }
+
 function checkAnyWin(player) {
   // 粗暴扫描：只要出现任一点作为“连珠中心”满足就算赢
   for (let y=0; y<15; y++) {
@@ -477,15 +489,17 @@ function settleGameByCount(source) {
     showDialogForPlayer(1, msgCenter + " 我这边略胜一筹～");
     showDialogForPlayer(2, "这局就先到这里，下次我会打回来的！");
   } else if (c2 > c1) {
+    // 这里是玩家2赢（在 PVE 里就是 AI 赢）
     showDialogForPlayer(2, msgCenter + " 我这边略胜一筹～");
     showDialogForPlayer(1, "先这样吧，下次换我反攻！");
-    if (
-      window.playMode === 'pve' &&  // 对战模式是“玩家 vs AI”
-      winner === 2 &&               // AI 是玩家2
-      Math.random() < 0.5           // 50% 概率
-    ) {
-      showDialogForPlayer(1, "今天也辛苦了呢，希望你获得快乐～");
+
+    // 提前结算彩蛋（对玩家1说）
+    if (source === 'early') {
+      maybeShowEarlySettleLines(1);
     }
+
+    // 输给 AI 时的安慰台词
+    maybeShowAiComfortForLoser(1);
   } else {
     showDialogForPlayer(1, msgCenter + " 平手。");
     showDialogForPlayer(2, "平局～下次再战。");
@@ -914,6 +928,42 @@ function triggerShoudaoRelax(defenderId) {
   handleStartOfTurn();
 }
 
+// === 隐藏彩蛋：提前结算时的温柔话 ===
+function maybeShowEarlySettleLines(targetPlayerId) {
+  if (Math.random() >= 0.3) return;  // 30% 概率
+
+  setTimeout(() => {
+    const text = "这盘棋没有输赢，只是一起坐了一会儿，以及我们每个人都要补充营养。";
+    showDialogForPlayer(targetPlayerId, text);
+  }, 2200); // 2.2 秒后再说，避免秒覆盖前一句
+}
+
+// === 隐藏彩蛋：输给 AI 的安慰台词 ===
+function maybeShowAiComfortForLoser(loserId) {
+  if (window.playMode !== 'pve') return;
+  if (Math.random() >= 0.5) return; // 50% 概率
+
+  setTimeout(() => {
+    showDialogForPlayer(loserId, "今天也辛苦了呢，希望你获得快乐～");
+  }, 2200); // 再晚一点出现，接在上面的台词后面
+}
+
+
+// === 隐藏彩蛋：解压模式第18回合提示 ===
+function showLucky18IfNeeded() {
+  if (gameMode !== 'relax') return;
+
+  const moves = (gameState.moveHistory && gameState.moveHistory.length) || 0;
+  if (moves !== 18) return;
+
+  if (Math.random() < 0.5) {
+    showDialogForPlayer(
+      gameState.currentPlayer,
+      "现在是第18回合，很幸运的数字呢。"
+    );
+  }
+}
+
 function openApocPrompt(defenderId, counterId) {
   const win = gameState.apocWindow;
   if (!win || win.defenderId !== defenderId) return;
@@ -1056,6 +1106,8 @@ function resolveLibashanxiSuccess(attackerId) {
   showDialogForPlayer(3 - attackerId, "（没来得及反应……）");
   gameOver = true;
   window.gameOver = true;
+  // === 隐藏彩蛋：输给 AI 的安慰台词 ===
+  maybeShowAiComfortForLoser(1);
 }
 
 // 两极反转：在力拔选择窗口中（当东山/手刀都已用）给防守方3秒按钮
