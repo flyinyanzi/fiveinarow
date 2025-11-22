@@ -4,6 +4,9 @@ let playMode = "pvp";      // 当前项目先做本地双人对战
 let skillMode = "free";    // 先做“自由选卡”模式
 let gameMode = "normal";   // 'normal' | 'relax' 对战 / 解压
 
+// 解压模式下，需要“2 回合冷却”的技能
+const RELAX_COOLDOWN_SKILLS = ['feishazoushi', 'jingruzhishui'];
+
 let currentPlayer = 1;
 let board;
 let gameOver = false;
@@ -56,10 +59,37 @@ const gameState = {
   shoudaoUsed: { 1: false, 2: false },       // 手刀一次性
   liangjiUsed: { 1: false, 2: false },       // 两极反转（通常一次）
 
+  // 解压模式：技能冷却记录 { skillId: {1: number, 2: number} }
+  skillCooldowns: {},
+
   // 工具引用
   showDialogForPlayer,
   clearCell
 };
+
+// —— 解压模式：冷却工具 —— 
+function getCooldown(skillId, playerId) {
+  const table = gameState.skillCooldowns[skillId];
+  if (!table) return 0;
+  return table[playerId] || 0;
+}
+
+function setCooldown(skillId, playerId, turns) {
+  if (!gameState.skillCooldowns[skillId]) {
+    gameState.skillCooldowns[skillId] = { 1: 0, 2: 0 };
+  }
+  gameState.skillCooldowns[skillId][playerId] = Math.max(0, turns);
+}
+
+function tickCooldownsAtTurnStart(playerId) {
+  if (gameMode !== 'relax') return;
+  RELAX_COOLDOWN_SKILLS.forEach(id => {
+    const cd = getCooldown(id, playerId);
+    if (cd > 0) {
+      setCooldown(id, playerId, cd - 1);
+    }
+  });
+}
 
 // —— 新局前：重置所有技能的使用状态 —— 
 function resetAllSkillState() {
@@ -148,16 +178,22 @@ function startGame() {
   gameState.shoudaoUsed = { 1: false, 2: false };
   gameState.liangjiUsed = { 1: false, 2: false };
 
+  // 解压模式技能冷却清空
+  gameState.skillCooldowns = {};
+
   // —— 启动 —— 
   initBoard();
   handleStartOfTurn(); // 会渲染回合提示与技能面板
 }
 
-// —— 回合开始：清对白 → 跳过 → 额外回合禁技生效 → 刷新UI —— 
+// —— 回合开始：清对白 → 冷却递减 → 跳过 → 额外回合禁技生效 → 刷新UI —— 
 function handleStartOfTurn() {
   clearDialogs();
   gameState.skillUsedThisTurn = false;
   gameState.moveMadeThisTurn = false;
+
+  // 解压模式：当前玩家所有需要冷却的技能，回合开始时 CD - 1
+  tickCooldownsAtTurnStart(currentPlayer);
 
   // 被静如止水跳过
   if (gameState.skipNextTurnFor === currentPlayer) {
@@ -329,6 +365,49 @@ function countPiecesOf(playerId){
   let cnt=0;
   for (let y=0;y<15;y++) for (let x=0;x<15;x++) if (board[y][x]===playerId) cnt++;
   return cnt;
+}
+
+function isBoardFull() {
+  for (let y = 0; y < 15; y++) {
+    for (let x = 0; x < 15; x++) {
+      if (board[y][x] === 0) return false;
+    }
+  }
+  return true;
+}
+
+function isBoardEmpty() {
+  for (let y = 0; y < 15; y++) {
+    for (let x = 0; x < 15; x++) {
+      if (board[y][x] !== 0) return false;
+    }
+  }
+  return true;
+}
+
+// 按子数结算：source='early'（提前）|'full'（棋满）
+function settleGameByCount(source) {
+  if (gameOver) return;
+
+  const c1 = countPiecesOf(1);
+  const c2 = countPiecesOf(2);
+
+  let msgCenter = (source === 'early') ? "提前结算：" : "棋满结算：";
+  msgCenter += `黑方 ${c1} 子，白方 ${c2} 子。`;
+
+  if (c1 > c2) {
+    showDialogForPlayer(1, msgCenter + " 我这边略胜一筹～");
+    showDialogForPlayer(2, "这局就先到这里，下次我会打回来的！");
+  } else if (c2 > c1) {
+    showDialogForPlayer(2, msgCenter + " 我这边略胜一筹～");
+    showDialogForPlayer(1, "先这样吧，下次换我反攻！");
+  } else {
+    showDialogForPlayer(1, msgCenter + " 平手。");
+    showDialogForPlayer(2, "平局～下次再战。");
+  }
+
+  gameOver = true;
+  window.gameOver = true;
 }
 
 // 检查“对于 playerId 来说，棋盘上是否存在任何一颗敌方棋”
