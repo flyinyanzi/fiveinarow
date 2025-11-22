@@ -187,4 +187,19 @@ const skills = [
       if (!me.usedBy.includes(caster)) me.usedBy.push(caster);
     }
   }
+
+  // 10) 棒球 —— 解压模式用技能（普通模式只是提示一下）
+  {
+    id: "bangqiu",
+    name: "棒球",
+    description: "解压模式下试着打出本垒打，有机会随机打飞一颗棋子",
+    usedBy: [],
+    enabled: true,
+    effect: function (gameState) {
+      const caster = gameState.currentPlayer;
+      if (typeof handleBangqiuRelax === 'function') {
+        handleBangqiuRelax(caster);
+      }
+    }
+  }
 ];
