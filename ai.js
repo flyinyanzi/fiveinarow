@@ -88,6 +88,14 @@
     // 当前不是 AI 的回合，什么都不做
     if (!isAI[who]) return;
 
+    // === 两极反转后的强制停顿时间 ===
+    if (window.__ljDelayUntil && Date.now() < window.__ljDelayUntil) {
+      if (window.AI_DEBUG) console.log('[AI] waiting after 两极反转...');
+      return;
+    } else {
+      window.__ljDelayUntil = null;
+    }
+
     // 调虎离山后的“观战时间”： 1200ms 内 AI 不落子
     if (window.__lastTiaohuTime) {
       const WAIT_MS = 1200;
@@ -154,7 +162,13 @@
     if (!w || w.defenderId !== aiId) return;
 
     if (w.mode === 'liangji') {
-      if (rand() <= CFG.libaCounterLJ) clickButtonInArea(aiId, b => /两极反转/.test(b.innerText));
+      if (rand() <= CFG.libaCounterLJ) {
+        const clicked = clickButtonInArea(aiId, b => /两极反转/.test(b.innerText));
+        if (clicked) {
+          // ✨ 两极反转后：强制延迟 AI 落子，给黑历史台词留时间
+          window.__ljDelayUntil = Date.now() + 1500; // 单位 ms，可自行调整
+        }
+      }
       return;
     }
 
