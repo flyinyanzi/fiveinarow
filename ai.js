@@ -303,13 +303,19 @@
     // 当前总步数，用来避免“第一回合就静如止水”
     const totalMoves = (gameState.moveHistory && gameState.moveHistory.length) || 0;
 
-    // 基础的技能优先级
+    // 基础的技能优先级（之后会 shuffle，一般权重相近）
     let order = [
-      /静如止水/,
-      /飞沙走石/,
-      /梅开二度/,
-      /力拔山兮/
+    /静如止水/,
+    /飞沙走石/,
+    /梅开二度/,
+    /力拔山兮/
     ];
+
+    // ★ 新增：解压模式下，把“两极反转”和“棒球”也加入主动技能候选
+    if (typeof gameMode !== 'undefined' && gameMode === 'relax') {
+      order.push(/两极反转/);
+      order.push(/棒球/);
+    }
 
     // 简单洗牌，让套路不要完全固定
     order = shuffleArray(order);
@@ -318,10 +324,10 @@
       for (const b of btns) {
         if (!regex.test(b.innerText)) continue;
 
-        // 梅开二度：如果已经连续用了 3 次，本回合就不再点它，改用别的技能/只落子
+        // 梅开二度：如果已经连续用了 3 次，本回合就不再点它
         if (/梅开二度/.test(b.innerText) && meikaiChainCount >= 3) continue;
 
-        // 静如止水：避免开局就给人来一发（比如至少等双方各下 1 子以后）
+        // 静如止水：避免开局就给人来一发（至少等双方各下 1 子以后）
         if (/静如止水/.test(b.innerText) && totalMoves < 4) continue;
 
         if (window.AI_DEBUG) console.log('[AI] plan skill:', b.innerText);
@@ -336,7 +342,10 @@
         if (/梅开二度/.test(b.innerText)) return 'meikaierdhu';
         if (/飞沙走石/.test(b.innerText)) return 'feishazoushi';
         if (/静如止水/.test(b.innerText)) return 'jingruzhishui';
-        if (/力拔山兮/.test(b.innerText)) return 'libashanxi';
+        if (/力拔山兮/.test(b.innerText))  return 'libashanxi';
+        // ★ 新增：解压模式新增技能的 id 返回
+        if (/两极反转/.test(b.innerText)) return 'liangjifanzhuan';
+        if (/棒球/.test(b.innerText))     return 'bangqiu';
 
         return null;
       }
