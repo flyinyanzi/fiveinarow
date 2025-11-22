@@ -4,8 +4,24 @@ let playMode = "pvp";      // 当前项目先做本地双人对战
 let skillMode = "free";    // 先做“自由选卡”模式
 let gameMode = "normal";   // 'normal' | 'relax' 对战 / 解压
 
-// 解压模式下，需要“2 回合冷却”的技能
-const RELAX_COOLDOWN_SKILLS = ['feishazoushi', 'jingruzhishui'];
+// 解压模式：各技能冷却回合数
+const RELAX_SKILL_COOLDOWN_TURNS = {
+  feishazoushi: 2,      // 飞沙走石
+  jingruzhishui: 2,     // 静如止水
+  liangjifanzhuan: 5,   // 两极反转
+  bangqiu: 3            // 棒球：先设 3 回合，你以后想调再说
+};
+const RELAX_COOLDOWN_SKILLS = Object.keys(RELAX_SKILL_COOLDOWN_TURNS);
+
+// AI 用两极反转时可能飘出的黑历史台词
+const AI_LIANGJI_QUOTES = [
+  "揭开黑历史：不爱吃香菜",
+  "揭开黑历史：喜欢奇米蛋",
+  "揭开黑历史：爱看小马宝莉",
+  "揭开黑历史：喜欢听陶喆的歌",
+  "揭开黑历史：我会不会又睡到下午了",
+  "揭开黑历史：猫猫的叫声让我被治愈"
+];
 
 let currentPlayer = 1;
 let board;
@@ -57,17 +73,21 @@ const gameState = {
   libaSealedFor: null,                       // 被两极反转封印力拔的人（1/2/null）
   dongshanUsed: { 1: false, 2: false },      // 东山再起一次性
   shoudaoUsed: { 1: false, 2: false },       // 手刀一次性
-  liangjiUsed: { 1: false, 2: false },       // 两极反转（通常一次）
+  liangjiUsed: { 1: false, 2: false },       // 两极反转（对战模式用，一般一次）
 
   // 解压模式：技能冷却记录 { skillId: {1: number, 2: number} }
   skillCooldowns: {},
+
+  // 解压模式：力拔山兮爆炸后 3 秒内东山/手刀窗口
+  // { attackerId, defenderId, snapshot, removed, timeoutId }
+  relaxLibaWindow: null,
 
   // 工具引用
   showDialogForPlayer,
   clearCell
 };
 
-// —— 解压模式：冷却工具 —— 
+// —— 解压模式：冷却工具 ——
 function getCooldown(skillId, playerId) {
   const table = gameState.skillCooldowns[skillId];
   if (!table) return 0;
@@ -180,6 +200,12 @@ function startGame() {
 
   // 解压模式技能冷却清空
   gameState.skillCooldowns = {};
+
+  // 解压版力拔窗口清空
+  if (gameState.relaxLibaWindow && gameState.relaxLibaWindow.timeoutId) {
+    clearTimeout(gameState.relaxLibaWindow.timeoutId);
+  }
+  gameState.relaxLibaWindow = null;
 
   // —— 启动 —— 
   initBoard();
@@ -376,6 +402,37 @@ function countPiecesOf(playerId){
   return cnt;
 }
 
+function handleBangqiuRelax(playerId) {
+  // 简化版：50% 本垒打，50% miss
+  const hit = Math.random() < 0.5;
+
+  if (!hit) {
+    showDialogForPlayer(playerId, "呀嘞呀嘞，没打中~");
+    return;
+  }
+
+  // 本垒打：随机打飞一颗任意棋子
+  const stones = [];
+  for (let y = 0; y < 15; y++) {
+    for (let x = 0; x < 15; x++) {
+      if (board[y][x] !== 0) {
+        stones.push({ x, y, owner: board[y][x] });
+      }
+    }
+  }
+
+  if (stones.length === 0) {
+    showDialogForPlayer(playerId, "本垒打！不过棋盘上还空空的，不能打飞棋子咯。");
+    return;
+  }
+
+  const choice = stones[Math.floor(Math.random() * stones.length)];
+  board[choice.y][choice.x] = 0;
+  clearCell(choice.x, choice.y);
+
+  showDialogForPlayer(playerId, "本垒打！把一颗棋子打飞出场！");
+}
+
 function isBoardFull() {
   for (let y = 0; y < 15; y++) {
     for (let x = 0; x < 15; x++) {
@@ -437,24 +494,36 @@ function hasEnemyPieceFor(playerId) {
   return false;
 }
 
-// —— 梅开二度：准备阶段 + 擒拿窗口 —— 
+// —— 梅开二度：准备阶段 + 擒拿窗口 ——
 function startPreparedSkill(playerId, skillId) {
   gameState.preparedSkill = { playerId, skillId };
   showDialogForPlayer(playerId, "梅开二度，准备出手！");
 
   const defenderId = 3 - playerId;
 
-  // 擒拿3秒反应窗口
+  // 解压模式：50% 概率给出擒拿窗口；对战模式：必出
+  const allowQinNa = (gameMode === 'relax') ? (Math.random() < 0.5) : true;
+
   const to = setTimeout(() => {
     // 无人反应 → 结算
-    if (gameState.preparedSkill && gameState.preparedSkill.playerId === playerId && gameState.preparedSkill.skillId === 'meikaierdhu') {
+    if (
+      gameState.preparedSkill &&
+      gameState.preparedSkill.playerId === playerId &&
+      gameState.preparedSkill.skillId === 'meikaierdhu'
+    ) {
       resolvePreparedSkill();
     }
   }, 3000);
 
-  gameState.reactionWindow = { defenderId, forSkillId: 'meikaierdhu', timeoutId: to };
+  gameState.reactionWindow = {
+    defenderId,
+    forSkillId: 'meikaierdhu',
+    timeoutId: to,
+    allowQinNa
+  };
 
-  renderSkillPool(1); renderSkillPool(2);
+  renderSkillPool(1);
+  renderSkillPool(2);
 }
 
 function resolvePreparedSkill() {
@@ -502,17 +571,48 @@ function cancelPreparedSkill(byPlayerId) {
   gameState.reactionWindow = null;
   gameState.preparedSkill = null;
 
-  // 开启“调虎离山”3秒窗口（进攻方作为可发动者）
+  // —— 解压模式：调虎离山出现与否 50% 概率 —— 
+  if (gameMode === 'relax') {
+    const allowTiaoHu = Math.random() < 0.5;
+    if (allowTiaoHu) {
+      markSkillVisibleFor('tiaohulishan', attacker, true);
+      const to = setTimeout(() => {
+        markSkillVisibleFor('tiaohulishan', attacker, false);
+        if (gameState.reactionWindow?.timeoutId) clearTimeout(gameState.reactionWindow.timeoutId);
+        gameState.reactionWindow = null;
+        renderSkillPool(1);
+        renderSkillPool(2);
+      }, 3000);
+      gameState.reactionWindow = {
+        defenderId: attacker,
+        forSkillId: 'tiaohulishan',
+        timeoutId: to
+      };
+    } else {
+      // 不出现调虎，直接结束
+      renderSkillPool(1);
+      renderSkillPool(2);
+    }
+    return;
+  }
+
+  // —— 对战模式：保持原逻辑，必出调虎离山 —— 
   markSkillVisibleFor('tiaohulishan', attacker, true);
   const to = setTimeout(() => {
     markSkillVisibleFor('tiaohulishan', attacker, false);
     if (gameState.reactionWindow?.timeoutId) clearTimeout(gameState.reactionWindow.timeoutId);
     gameState.reactionWindow = null;
-    renderSkillPool(1); renderSkillPool(2);
+    renderSkillPool(1);
+    renderSkillPool(2);
   }, 3000);
-  gameState.reactionWindow = { defenderId: attacker, forSkillId: 'tiaohulishan', timeoutId: to };
+  gameState.reactionWindow = {
+    defenderId: attacker,
+    forSkillId: 'tiaohulishan',
+    timeoutId: to
+  };
 
-  renderSkillPool(1); renderSkillPool(2);
+  renderSkillPool(1);
+  renderSkillPool(2);
 }
 
 // —— mark 可见性 —— 
@@ -636,9 +736,12 @@ function startLibashanxi(attackerId) {
   renderSkillPool(1); renderSkillPool(2);
 }
 
-// —— 解压模式下的“爆炸洗牌版”力拔山兮 —— 
+// —— 解压模式下的“爆炸洗牌版”力拔山兮 ——
 function startLibashanxiRelax(attackerId) {
   const defenderId = 3 - attackerId;
+
+  // 记录爆炸前快照（用于东山再起恢复）
+  const snap = snapshotGame();
 
   // 收集棋子位置
   const own = [];
@@ -655,21 +758,12 @@ function startLibashanxiRelax(attackerId) {
     return;
   }
 
-  // 抖一抖（如果你以后在 CSS 里加 .shake，可以这里加/删）
+  // 抖一抖
   const canvas = document.getElementById('board');
   if (canvas) {
     canvas.classList.add('shake-board');
     setTimeout(() => canvas.classList.remove('shake-board'), 600);
   }
-
-  // 设定要炸掉的总数：3～7 颗，但不能超过总子数
-  const totalStones = own.length + opp.length;
-  const maxRemove = Math.min(totalStones, 7);
-  const minRemove = Math.min(maxRemove, 3);
-  const removeCount = minRemove + Math.floor(Math.random() * (maxRemove - minRemove + 1));
-
-  // 优先炸对方，最多 4 颗
-  const toRemove = [];
 
   function shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -681,6 +775,15 @@ function startLibashanxiRelax(attackerId) {
   shuffle(opp);
   shuffle(own);
 
+  // 设定要炸掉的总数：3～7 颗，但不能超过总子数
+  const totalStones = own.length + opp.length;
+  const maxRemove = Math.min(totalStones, 7);
+  const minRemove = Math.min(maxRemove, 3);
+  const removeCount = minRemove + Math.floor(Math.random() * (maxRemove - minRemove + 1));
+
+  const toRemove = [];
+
+  // 优先炸对方，最多 4 颗
   const oppRemove = Math.min(4, opp.length, removeCount);
   for (let i = 0; i < oppRemove; i++) {
     toRemove.push({ ...opp[i], owner: defenderId });
@@ -701,8 +804,95 @@ function startLibashanxiRelax(attackerId) {
   showDialogForPlayer(attackerId, `力拔山兮！！！棋盘一阵天翻地覆，炸飞了 ${toRemove.length} 颗棋。`);
   showDialogForPlayer(defenderId, `刚刚有 ${oppRemove} 颗棋子被掀飞了……自己的也被卷进去了一点。`);
 
-  // 解压模式下：力拔山兮只是搞事情，不结束游戏，也不进入克制窗口
+  // 记录这次爆炸，用于东山/手刀
+  if (gameState.relaxLibaWindow && gameState.relaxLibaWindow.timeoutId) {
+    clearTimeout(gameState.relaxLibaWindow.timeoutId);
+  }
+  gameState.relaxLibaWindow = null;
+
+  const state = {
+    attackerId,
+    defenderId,
+    snapshot: snap,
+    removed: toRemove,
+    timeoutId: null
+  };
+  gameState.relaxLibaWindow = state;
+
+  // 判定是否给防守方东山/手刀按钮
+  const canDongshan = !gameState.dongshanUsed[defenderId];
+  const canShoudao = !gameState.shoudaoUsed[defenderId];
+
+  let anyVisible = false;
+  if (canDongshan && Math.random() < 0.5) {
+    markSkillVisibleFor('dongshanzaiqi', defenderId, true);
+    anyVisible = true;
+  }
+  if (canShoudao && Math.random() < 0.5) {
+    markSkillVisibleFor('shou_dao', defenderId, true);
+    anyVisible = true;
+  }
+
+  if (anyVisible) {
+    state.timeoutId = setTimeout(() => {
+      markSkillVisibleFor('dongshanzaiqi', defenderId, false);
+      markSkillVisibleFor('shou_dao', defenderId, false);
+      gameState.relaxLibaWindow = null;
+      renderSkillPool(1);
+      renderSkillPool(2);
+    }, 3000);
+  }
+
+  // 解压模式下：力拔山兮只是搞事情，不结束游戏
   gameState.skillUsedThisTurn = true;
+}
+
+// 解压版东山再起效果
+function triggerDongshanRelax(defenderId) {
+  const win = gameState.relaxLibaWindow;
+  if (!win || win.defenderId !== defenderId) return;
+
+  // 清按钮 & 计时器
+  if (win.timeoutId) clearTimeout(win.timeoutId);
+  markSkillVisibleFor('dongshanzaiqi', defenderId, false);
+  markSkillVisibleFor('shou_dao', defenderId, false);
+  gameState.relaxLibaWindow = null;
+
+  // 恢复到爆炸前的棋盘
+  applySnapshot(win.snapshot);
+  gameState.dongshanUsed[defenderId] = true;
+
+  showDialogForPlayer(defenderId, "东山再起，把刚才炸掉的棋子全捡回来了。");
+  showDialogForPlayer(win.attackerId, "什么？刚刚的爆炸好像变成梦一场……");
+
+  renderSkillPool(1);
+  renderSkillPool(2);
+}
+
+// 解压版手刀效果
+function triggerShoudaoRelax(defenderId) {
+  const win = gameState.relaxLibaWindow;
+  if (!win || win.defenderId !== defenderId) return;
+
+  const attackerId = win.attackerId;
+
+  if (win.timeoutId) clearTimeout(win.timeoutId);
+  markSkillVisibleFor('dongshanzaiqi', defenderId, false);
+  markSkillVisibleFor('shou_dao', defenderId, false);
+  gameState.relaxLibaWindow = null;
+
+  // 手刀效果：对方下回合被跳过，自己多一回合（静如止水那套）
+  gameState.shoudaoUsed[defenderId] = true;
+  gameState.skipNextTurnFor = attackerId;
+  gameState.bonusTurnPendingFor = defenderId;
+
+  showDialogForPlayer(defenderId, "手刀！这回合开始由我接管了～");
+  showDialogForPlayer(attackerId, "啊——啊——APT、APT…");
+
+  // 轮到防守方（现在的“手刀施放者”）继续
+  currentPlayer = defenderId;
+  gameState.currentPlayer = defenderId;
+  handleStartOfTurn();
 }
 
 function openApocPrompt(defenderId, counterId) {
@@ -932,9 +1122,14 @@ function renderSkillPool(playerId) {
     const isRelaxCdSkill = (gameMode === 'relax' && RELAX_COOLDOWN_SKILLS.includes(skill.id));
     const cd = isRelaxCdSkill ? getCooldown(skill.id, playerId) : 0;
 
-    // —— 特殊渲染 1：擒拿（仅在“梅开二度”准备的3秒窗口内） —— 
+    // —— 特殊渲染 1：擒拿（仅在“梅开二度”准备的3秒窗口内） ——
     if (skill.id === 'qin_na') {
-      const canReact = react && react.defenderId === playerId && react.forSkillId === 'meikaierdhu';
+      const canReact =
+        react &&
+        react.defenderId === playerId &&
+        react.forSkillId === 'meikaierdhu' &&
+        (react.allowQinNa !== false);   // 解压模式下 allowQinNa=false 则直接不出现
+
       if (!canReact) return;
 
       const btn = document.createElement('button');
@@ -970,33 +1165,87 @@ function renderSkillPool(playerId) {
       return;
     }
 
-    // —— 特殊渲染 3：力拔山兮克制（东山 / 手刀） —— 
+    // —— 特殊渲染 3：力拔山兮克制（东山 / 手刀） ——
     if (skill.id === 'dongshanzaiqi') {
-      const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liba_select' && !gameState.dongshanUsed[playerId];
+      if (gameMode === 'relax') {
+        // 解压模式：仅当 visibleFor[playerId] = true 且尚未用过时出现按钮
+        const visible = (!gameState.dongshanUsed[playerId] &&
+          skill.visibleFor &&
+          skill.visibleFor[playerId] !== false);
+        if (!visible) return;
+
+        const btn = document.createElement('button');
+        btn.className = 'skill-button';
+        btn.innerText = skill.name;
+        btn.title = '捡起刚刚被掀飞的棋盘（恢复到爆炸前）';
+        btn.onclick = () => { triggerDongshanRelax(playerId); };
+        area.appendChild(btn);
+        return;
+      }
+
+      // —— 对战模式：旧逻辑，进入 10 秒口令 —— 
+      const can =
+        apoc &&
+        apoc.defenderId === playerId &&
+        apoc.mode === 'liba_select' &&
+        !gameState.dongshanUsed[playerId];
       if (!can) return;
       const btn = document.createElement('button');
       btn.className = 'skill-button';
-      btn.innerText = skill.name;
+      btn.innerText = skill.name;  // “捡起棋盘”
       btn.title = '3秒内可点 → 进入10秒口令：输入“东山再起”并发送';
-      btn.onclick = () => { currentPlayer = playerId; gameState.currentPlayer = playerId; openApocPrompt(playerId, 'dongshanzaiqi'); };
+      btn.onclick = () => {
+        currentPlayer = playerId;
+        gameState.currentPlayer = playerId;
+        openApocPrompt(playerId, 'dongshanzaiqi');
+      };
       area.appendChild(btn);
       return;
     }
+
     if (skill.id === 'shou_dao') {
-      const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liba_select' && !gameState.shoudaoUsed[playerId];
+      if (gameMode === 'relax') {
+        const visible = (!gameState.shoudaoUsed[playerId] &&
+          skill.visibleFor &&
+          skill.visibleFor[playerId] !== false);
+        if (!visible) return;
+
+        const btn = document.createElement('button');
+        btn.className = 'skill-button';
+        btn.innerText = skill.name;
+        btn.title = '这回合让对方停一停，我多下一步棋';
+        btn.onclick = () => { triggerShoudaoRelax(playerId); };
+        area.appendChild(btn);
+        return;
+      }
+
+      // —— 对战模式：旧逻辑 —— 
+      const can =
+        apoc &&
+        apoc.defenderId === playerId &&
+        apoc.mode === 'liba_select' &&
+        !gameState.shoudaoUsed[playerId];
       if (!can) return;
       const btn = document.createElement('button');
       btn.className = 'skill-button';
       btn.innerText = skill.name;
       btn.title = '3秒内可点 → 进入10秒口令：输入“see you again”并发送';
-      btn.onclick = () => { currentPlayer = playerId; gameState.currentPlayer = playerId; openApocPrompt(playerId, 'shou_dao'); };
+      btn.onclick = () => {
+        currentPlayer = playerId;
+        gameState.currentPlayer = playerId;
+        openApocPrompt(playerId, 'shou_dao');
+      };
       area.appendChild(btn);
       return;
     }
 
-    // —— 特殊渲染 4：两极反转 —— 
-    if (skill.id === 'liangjifanzhuan') {
-      const can = apoc && apoc.defenderId === playerId && apoc.mode === 'liangji' && !gameState.liangjiUsed[playerId];
+    // —— 特殊渲染 4：两极反转（对战模式下，力拔后的 3 秒窗口） —— 
+    if (skill.id === 'liangjifanzhuan' && gameMode === 'normal') {
+      const can =
+        apoc &&
+        apoc.defenderId === playerId &&
+        apoc.mode === 'liangji' &&
+        !gameState.liangjiUsed[playerId];
       if (!can) return;
       const btn = document.createElement('button');
       btn.className = 'skill-button';
@@ -1098,6 +1347,57 @@ function renderSkillPool(playerId) {
         return;
       }
 
+      // 特例：两极反转（解压模式独立大招）
+      if (skill.id === 'liangjifanzhuan' && gameMode === 'relax') {
+        gameState.currentPlayer = playerId;
+        applySwapPieces();
+
+        // 冷却 5 回合
+        if (isRelaxCdSkill) {
+          const turns = RELAX_SKILL_COOLDOWN_TURNS[skill.id] || 5;
+          setCooldown(skill.id, playerId, turns);
+        }
+
+        gameState.skillUsedThisTurn = true;
+
+        // AI 解压模式：50% 概率飘黑历史台词
+        if (
+          window.playMode === 'pve' &&
+          playerId === 2 &&          // AI 是玩家2
+          Math.random() < 0.5 &&
+          AI_LIANGJI_QUOTES.length
+        ) {
+          const line = AI_LIANGJI_QUOTES[Math.floor(Math.random() * AI_LIANGJI_QUOTES.length)];
+          showDialogForPlayer(2, line);
+        }
+
+        renderSkillPool(1);
+        renderSkillPool(2);
+        return;
+      }
+
+      // 特例：棒球（解压模式简化版）
+      if (skill.id === 'bangqiu') {
+        if (gameMode !== 'relax') {
+          showDialogForPlayer(playerId, "棒球技能只在解压模式开放哦～");
+        } else {
+          handleBangqiuRelax(playerId);
+          gameState.skillUsedThisTurn = true;
+
+          if (isRelaxCdSkill) {
+            const turns = RELAX_SKILL_COOLDOWN_TURNS[skill.id] || 3;
+            setCooldown(skill.id, playerId, turns);
+          } else {
+            skill.usedBy = skill.usedBy || [];
+            skill.usedBy.push(playerId);
+          }
+        }
+
+        renderSkillPool(1);
+        renderSkillPool(2);
+        return;
+      }
+
       // 其他普通技能（飞沙/静如止水等）
       if (skill.needsOpponentLastMove && !gameState.lastMoveBy[3 - playerId]) { showDialogForPlayer(playerId, "对方还没有落子，无计可施哦"); return; }
       if (skill.requiresEnemy && !hasEnemyPieceFor(playerId)) { showDialogForPlayer(playerId, "现在对方一子未下，技能无从施展！"); return; }
@@ -1114,8 +1414,9 @@ function renderSkillPool(playerId) {
         skill.usedBy = skill.usedBy || [];
         skill.usedBy.push(playerId);
       } else {
-        // 解压模式：冷却技能（飞沙 / 静如止水） → 设置 2 回合冷却，可反复使用
-        setCooldown(skill.id, playerId, 2);
+        // 解压模式：冷却技能（飞沙 / 静如止水 / 两极反转 / 棒球 etc）
+        const turns = RELAX_SKILL_COOLDOWN_TURNS[skill.id] || 2;
+        setCooldown(skill.id, playerId, turns);
       }
 
       renderSkillPool(1); renderSkillPool(2);
@@ -1150,6 +1451,11 @@ window.addEventListener('DOMContentLoaded', () => {
         clearInterval(gameState.apocPrompt.timerId);
       }
 
+      if (gameState.relaxLibaWindow && gameState.relaxLibaWindow.timeoutId) {
+        clearTimeout(gameState.relaxLibaWindow.timeoutId);
+      }
+      gameState.relaxLibaWindow = null;
+
       gameState.reactionWindow = null;
       gameState.apocWindow = null;
       gameState.apocPrompt = null;
@@ -1175,6 +1481,11 @@ window.addEventListener('DOMContentLoaded', () => {
       if (gameState.apocPrompt && gameState.apocPrompt.timerId) {
         clearInterval(gameState.apocPrompt.timerId);
       }
+
+      if (gameState.relaxLibaWindow && gameState.relaxLibaWindow.timeoutId) {
+        clearTimeout(gameState.relaxLibaWindow.timeoutId);
+      }
+      gameState.relaxLibaWindow = null;
 
       gameState.reactionWindow = null;
       gameState.apocWindow = null;
