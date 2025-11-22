@@ -27,6 +27,7 @@ let currentPlayer = 1;
 let board;
 let gameOver = false;
 window.gameOver = false;
+window.__bangqiuHitStreak = window.__bangqiuHitStreak || 0;
 
 // —— UI helpers —— 
 function showDialogForPlayer(playerId, text) {
@@ -406,6 +407,17 @@ function handleBangqiuRelax(playerId) {
   // 简化版：50% 本垒打，50% miss
   const hit = Math.random() < 0.5;
 
+  if (hit) {
+    window.__bangqiuHitStreak++;
+
+    if (window.__bangqiuHitStreak >= 3) {
+      showDialogForPlayer(playerId, "你是职业棒球手吗？");
+      window.__bangqiuHitStreak = 0; // 说完重置，避免刷屏
+    }
+  } else {
+    window.__bangqiuHitStreak = 0;
+  }
+
   if (!hit) {
     showDialogForPlayer(playerId, "呀嘞呀嘞，没打中~");
     return;
@@ -467,6 +479,13 @@ function settleGameByCount(source) {
   } else if (c2 > c1) {
     showDialogForPlayer(2, msgCenter + " 我这边略胜一筹～");
     showDialogForPlayer(1, "先这样吧，下次换我反攻！");
+    if (
+      window.playMode === 'pve' &&  // 对战模式是“玩家 vs AI”
+      winner === 2 &&               // AI 是玩家2
+      Math.random() < 0.5           // 50% 概率
+    ) {
+      showDialogForPlayer(1, "今天也辛苦了呢，希望你获得快乐～");
+    }
   } else {
     showDialogForPlayer(1, msgCenter + " 平手。");
     showDialogForPlayer(2, "平局～下次再战。");
