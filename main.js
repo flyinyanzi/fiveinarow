@@ -999,11 +999,35 @@ function openApocPrompt(defenderId, counterId) {
 
   panel.innerHTML = `
     <div style="margin-bottom:4px;">${tip}</div>
-    <input id="apoc-input-${defenderId}" type="text" style="width: 160px; margin-right:6px;" placeholder="${placeholder}" />
+    <input
+      id="apoc-input-${defenderId}"
+      type="text"
+      style="width: 160px; margin-right:6px; font-size:16px;"
+      placeholder="${placeholder}"
+    />
     <button id="apoc-send-${defenderId}">发送</button>
     <span id="apoc-count-${defenderId}" style="margin-left:8px;">(10s)</span>
   `;
   area.appendChild(panel);
+  // ★ 新增：移动端横屏时，自动把输入区滚到可见位置，并自动聚焦
+  const inputEl = document.getElementById(`apoc-input-${defenderId}`);
+  if (inputEl) {
+    // 防止有些浏览器一 focus 就乱滚，这里稍微延迟一下
+    setTimeout(() => {
+      try {
+        // 部分浏览器支持 preventScroll
+        inputEl.focus({ preventScroll: true });
+      } catch (e) {
+        inputEl.focus();
+      }
+
+      // 再平滑滚到技能区附近，避免用户手动拖
+      panel.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }, 50);
+  }
 
   const timerId = setInterval(() => {
     const left = Math.max(0, Math.ceil((deadline - Date.now())/1000));
