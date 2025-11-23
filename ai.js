@@ -257,7 +257,7 @@
       return runActions(actions);
     }
 
-    // 4. 没有“立刻即胜”的威胁时，再看对手有没有“活三”（0 p p p 0）
+    // 2-b. 没有“立刻即胜”的威胁时，再看对手有没有“活三”（0 p p p 0）
     if (gameMode === 'normal') {   // ★ 解压模式不防活三
       const open3 = findOpenThreeThreat(board, opp);
       if (open3 && rand() < CFG.open3BlockProb) {
@@ -265,15 +265,6 @@
         actions.push({ type: 'move', x: open3.x, y: open3.y });
         return runActions(actions);
       }
-    }
-
-    // 2-b. 没有“下一手就能赢”的点时，防守对方的“狭义活三”（0 p p p 0）
-    const oppOpen3 = findOpenThreeThreat(gameState.board, opp);
-    if (oppOpen3) {
-      // 这里不再为了活三去开技能，直接落子堵一头即可。
-      actions.push({ type: 'move', x: oppOpen3.x, y: oppOpen3.y });
-      meikaiChainCount = 0;
-      return runActions(actions);
     }
 
     // 3. 普通局面：先按概率考虑主动用技能，再正常落子
