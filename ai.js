@@ -233,14 +233,33 @@
     // 2. 再看对手有没有必胜点（防守逻辑）
     const oppWin = findImmediateWin(board, opp);
     if (oppWin && rand() <= CFG.mustBlockProb) {
-      // 先按优先级尝试用技能防守，再补一手落子封点
+      // 先按优先级尝试用技能防守
+      const beforeLen = actions.length;
       planDefenseWithSkills(me, opp, oppWin, actions);
+      const usedSkillNow = actions.length > beforeLen;
+
+      if (usedSkillNow) {
+        // 本回合只执行这个“防守技能动作”，不马上落子。
+        // 技能结算完后，下一轮 tick 会在新棋盘上重新检查威胁。
+        const usedMeikaiThisTurn = actions.some(
+          a => a.type === 'skill' && a.label && /梅开二度/.test(a.label)
+        );
+        meikaiChainCount = usedMeikaiThisTurn ? (meikaiChainCount + 1) : 0;
+        return runActions(actions);
+      }
+
+      // 没有可用的防守技能 → 只能直接把对方即胜点堵上
       actions.push({ type: 'move', x: oppWin.x, y: oppWin.y });
+      meikaiChainCount = 0;
+      return runActions(actions);
+    }
 
-      // 统计梅开连击（只看本回合是否计划使用梅开）
-      const usedMeikaiThisTurn = actions.some(a => a.type === 'skill' && a.label && /梅开二度/.test(a.label));
-      meikaiChainCount = usedMeikaiThisTurn ? (meikaiChainCount + 1) : 0;
-
+    // 2-b. 没有“下一手就能赢”的点时，防守对方的“狭义活三”（0 p p p 0）
+    const oppOpen3 = findOpenThreeThreat(gameState.board, opp);
+    if (oppOpen3) {
+      // 这里不再为了活三去开技能，直接落子堵一头即可。
+      actions.push({ type: 'move', x: oppOpen3.x, y: oppOpen3.y });
+      meikaiChainCount = 0;
       return runActions(actions);
     }
 
@@ -579,6 +598,103 @@
       }
     }
     return false;
+  }
+  
+  // 判断棋盘上是否存在“活四”（0 p p p p 0）——任意方向
+  function hasOpenFour(bd, player) {
+    const dirs = [
+      [1, 0],  // 横
+      [0, 1],  // 竖
+      [1, 1],  // 正斜
+      [1, -1], // 反斜
+    ];
+    const SIZE = 15;
+
+    for (const [dx, dy] of dirs) {
+      // 我们检查长度为 6 的线段：0 p p p p 0
+      for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+          const x5 = x + dx * 5;
+          const y5 = y + dy * 5;
+          // 确保这 6 个点都在棋盘里
+          if (x5 < 0 || x5 >= SIZE || y5 < 0 || y5 >= SIZE) continue;
+
+          const a0 = bd[y][x];
+          const a1 = bd[y + dy][x + dx];
+          const a2 = bd[y + 2 * dy][x + 2 * dx];
+          const a3 = bd[y + 3 * dy][x + 3 * dx];
+          const a4 = bd[y + 4 * dy][x + 4 * dx];
+          const a5 = bd[y5][x5];
+
+          if (
+            a0 === 0 &&
+            a1 === player &&
+            a2 === player &&
+            a3 === player &&
+            a4 === player &&
+            a5 === 0
+          ) {
+            return true; // 找到一个活四
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  // 在棋盘上为“enemy”找到一个 0 p p p 0 型的活三，并返回一个适合堵的位置
+  // 这里用的是“狭义活三”：连续三个 enemy，两端都是空（0）。
+  function findOpenThreeThreat(bd, enemy) {
+    const dirs = [
+      [1, 0],  // 横
+      [0, 1],  // 竖
+      [1, 1],  // 正斜
+      [1, -1], // 反斜
+    ];
+    const SIZE = 15;
+
+    // 简单的中心距离，用来在两端中选一个更靠近棋盘中心的点去堵
+    function centerDist(x, y) {
+      const cx = 7, cy = 7; // 15x15 棋盘中心大约在 (7,7)
+      const dx = x - cx;
+      const dy = y - cy;
+      return dx * dx + dy * dy;
+    }
+
+    for (const [dx, dy] of dirs) {
+      // 我们检查长度为 5 的线段：0 p p p 0
+      for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+          const x4 = x + dx * 4;
+          const y4 = y + dy * 4;
+          if (x4 < 0 || x4 >= SIZE || y4 < 0 || y4 >= SIZE) continue;
+
+          const a0 = bd[y][x];
+          const a1 = bd[y + dy][x + dx];
+          const a2 = bd[y + 2 * dy][x + 2 * dx];
+          const a3 = bd[y + 3 * dy][x + 3 * dx];
+          const a4 = bd[y4][x4];
+
+          if (
+            a0 === 0 &&
+            a1 === enemy &&
+            a2 === enemy &&
+            a3 === enemy &&
+            a4 === 0
+          ) {
+            // 这是一个 0 p p p 0 型的活三，我们从两端中选一个更靠中心的点去堵
+            const end1 = { x,   y   };
+            const end2 = { x: x4, y: y4 };
+            const better = (centerDist(end1.x, end1.y) <= centerDist(end2.x, end2.y))
+              ? end1
+              : end2;
+            return better;
+          }
+        }
+      }
+    }
+
+    return null; // 没有找到这样的活三
   }
 
   // ===== DEBUG TRIGGER FOR EDGE/MOBILE =====
