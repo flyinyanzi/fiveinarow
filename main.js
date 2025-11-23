@@ -8,6 +8,7 @@ let gameMode = "normal";   // 'normal' | 'relax' 对战 / 解压
 const RELAX_SKILL_COOLDOWN_TURNS = {
   feishazoushi: 2,      // 飞沙走石
   jingruzhishui: 2,     // 静如止水
+  libashanxi: 3,        // 力拔山兮
   liangjifanzhuan: 5,   // 两极反转
   bangqiu: 3            // 棒球：先设 3 回合，你以后想调再说
 };
@@ -878,6 +879,9 @@ function startLibashanxiRelax(attackerId) {
 
   // 解压模式下：力拔山兮只是搞事情，不结束游戏
   gameState.skillUsedThisTurn = true;
+  // ✅ 解压模式：力拔山兮进入冷却
+  const turns = RELAX_SKILL_COOLDOWN_TURNS['libashanxi'] || 3;
+  setCooldown('libashanxi', attackerId, turns);
 }
 
 // 解压版东山再起效果
